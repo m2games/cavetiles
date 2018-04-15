@@ -1,6 +1,6 @@
 all:
-	g++ -Wall -Wextra -pedantic -fno-exceptions -fno-rtti -O3 \
+	g++ -std=c++11 -Wall -Wextra -pedantic -fno-exceptions -fno-rtti -O3 \
 	    -I/usr/local/include \
 	    -o cavetiles \
 	    main.cpp glad.c \
-	    -L/usr/local/lib -lglfw -ldl
+	    -L/usr/local/Cellar -lglfw -ldl
