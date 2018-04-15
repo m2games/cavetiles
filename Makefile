@@ -1,2 +1,6 @@
 all:
-	g++ main.cpp -Wall -Wextra -pedantic -fno-exceptions -fno-rtti -O3 -o cavetiles
+	g++ -Wall -Wextra -pedantic -fno-exceptions -fno-rtti -O3 \
+	    -I/usr/local/include \
+	    -o cavetiles \
+	    main.cpp glad.c \
+	    -L/usr/local/lib -lglfw -ldl
