@@ -404,12 +404,9 @@ int main()
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 1);
 
         ImGui::Begin("options");
-        {
-            ImGui::Text("dear imgui test!");
-            if(ImGui::Button("quit"))
-                quit = true;
-
-        }
+        ImGui::Text("dear imgui test!");
+        if(ImGui::Button("quit"))
+            quit = true;
         ImGui::End();
 
         ImGui::Render();

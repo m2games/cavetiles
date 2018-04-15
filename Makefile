@@ -1,6 +1,4 @@
-CC= g++ -std=c++11 -Wall -Wextra -pedantic -fno-exceptions -fno-rtti -O3 \
-    -DIMGUI_DISABLE_STB_TRUETYPE_IMPLEMENTATION \
-    -DIMGUI_DISABLE_STB_RECT_PACK_IMPLEMENTATION
+CC= g++ -std=c++11 -Wall -Wextra -pedantic -fno-exceptions -fno-rtti -O3
 
 all: stb.o
 	$(CC) main.cpp glad.c stb.o -o cavetiles \
