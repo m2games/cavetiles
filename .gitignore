@@ -1,3 +1,4 @@
 cavetiles
-stb_image.o
+stb.o
 *.trace
+*.ini

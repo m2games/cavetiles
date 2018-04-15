@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include "stb_image.h"
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_glfw_gl3.h"
 
 static void errorCallback(int error, const char* description)
 {
@@ -36,6 +38,28 @@ struct Texture
     ivec2 size = {0, 0};
     GLuint id = 0;
 };
+
+struct Glyph
+{
+    vec4 texRect;
+    float advance;
+    vec2 offset;
+};
+
+struct Font
+{
+    Texture texture;
+    Glyph glyphs[126];
+    float lineSpace;
+};
+
+Font createFontFromFile(const char* const filename, int textureWidth)
+{
+    // @TODO(matiTechno)
+    (void)filename;
+    (void)textureWidth;
+    return {};
+}
 
 static void bindTexture(const Texture& texture, const GLuint unit = 0)
 {
@@ -256,6 +280,10 @@ int main()
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glfwSwapInterval(1);
 
+    ImGui::CreateContext();
+    ImGui_ImplGlfwGL3_Init(window, true);
+    ImGui::StyleColorsDark();
+
     GLuint program = createProgram(vertexSrc, fragmentSrc);
 
     GLuint vao, vbo, vboInst;
@@ -321,13 +349,16 @@ int main()
 
     double time = glfwGetTime();
 
-    while(!glfwWindowShouldClose(window))
+    bool quit = false;
+    while(!quit)
     {
         double newTime = glfwGetTime();
         const float dt = newTime - time;
         time = newTime;
 
         glfwPollEvents();
+        quit = glfwWindowShouldClose(window);
+        ImGui_ImplGlfwGL3_NewFrame();
 
         rect.rotation += dt;
 
@@ -372,8 +403,23 @@ int main()
         glUseProgram(program);
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 1);
 
+        ImGui::Begin("options");
+        {
+            ImGui::Text("dear imgui test!");
+            if(ImGui::Button("quit"))
+                quit = true;
+
+        }
+        ImGui::End();
+
+        ImGui::Render();
+        ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
+
         glfwSwapBuffers(window);
     }
+
+    ImGui_ImplGlfwGL3_Shutdown();
+    ImGui::DestroyContext();
 
     deleteTexture(texture);
     glDeleteVertexArrays(1, &vao);
