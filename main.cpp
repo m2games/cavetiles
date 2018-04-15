@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
-#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 static void errorCallback(int error, const char* description)
@@ -68,7 +67,7 @@ static Texture createTextureFromFile(const char* const filename)
     {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tex.size.x, tex.size.y, 0,
                 GL_RGBA, GL_UNSIGNED_BYTE, data);
-        
+
         stbi_image_free(data);
     }
 
@@ -143,7 +142,10 @@ void main()
 
     if(useTexture)
     {
-        color *= texture(sampler, vTexCoord);
+        vec4 texColor = texture(sampler, vTexCoord);
+        // premultiply alpha
+        texColor.rgb *= texColor.a;
+        color *= texColor;
     }
 }
 )";
@@ -312,7 +314,7 @@ int main()
     camera.pos = {0.f, 0.f};
     camera.size = {100.f, 100.f};
 
-    Texture texture = createTextureFromFile("lol.png");
+    Texture texture = createTextureFromFile("res/github.png");
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
