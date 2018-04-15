@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 static void errorCallback(int error, const char* description)
 {
@@ -10,53 +12,139 @@ static void errorCallback(int error, const char* description)
     printf("GLFW error: %s\n", description);
 }
 
+struct ivec2
+{
+    int x;
+    int y;
+};
+
+struct vec2
+{
+    float x;
+    float y;
+};
+
+struct vec4
+{
+    float x;
+    float y;
+    float z;
+    float w;
+};
+
+struct Texture
+{
+    ivec2 size = {0, 0};
+    GLuint id = 0;
+};
+
+static void bindTexture(const Texture& texture, const GLuint unit = 0)
+{
+    glActiveTexture(GL_TEXTURE0 + unit);
+    glBindTexture(GL_TEXTURE_2D, texture.id);
+}
+
+// delete it with deleteTexture()
+static Texture createTextureFromFile(const char* const filename)
+{
+    Texture tex;
+    glGenTextures(1, &tex.id);
+    bindTexture(tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+
+    unsigned char* const data = stbi_load(filename, &tex.size.x, &tex.size.y,
+                                          nullptr, 4);
+
+    if(!data)
+    {
+        printf("stbi_load() failed: %s\n", filename);
+        tex.size = {1, 1};
+        const unsigned char color[] = {0, 255, 0, 255};
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tex.size.x, tex.size.y, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, color);
+    }
+    else
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tex.size.x, tex.size.y, 0,
+                GL_RGBA, GL_UNSIGNED_BYTE, data);
+        
+        stbi_image_free(data);
+    }
+
+    return tex;
+}
+
+static inline void deleteTexture(const Texture& texture)
+{
+    glDeleteTextures(1, &texture.id);
+}
+
 const char* const vertexSrc = R"(
 #version 330
 
-layout(location = 0) in vec2 vertex;
+layout(location = 0) in vec4 aVertex;
 
 // instanced
-layout(location = 1) in vec2 pos;
-layout(location = 2) in vec2 size;
-layout(location = 3) in vec4 color;
-layout(location = 4) in float rotation;
+layout(location = 1) in vec2 aiPos;
+layout(location = 2) in vec2 aiSize;
+layout(location = 3) in vec4 aiColor;
+layout(location = 4) in vec4 aiTexRect;
+layout(location = 5) in float aiRotation;
 
 uniform vec2 cameraPos;
 uniform vec2 cameraSize;
 
 out vec4 vColor;
+out vec2 vTexCoord;
 
 void main()
 {
-    vColor = color;
+    vColor = aiColor;
+    vTexCoord = aVertex.zw * aiTexRect.zw + aiTexRect.xy;
 
-    float r = length(vertex);
-    float s = sin(rotation);
-    float c = cos(rotation);
+    vec2 aPos = aVertex.xy;
+    vec2 pos;
 
-    vec2 vertexRot;
-    vertexRot.x = vertex.x * c - vertex.y * s;
-    // - because in our coordinate system y grows down
-    vertexRot.y = -(vertex.x * s + vertex.y * c);
+    // rotation
+    float s = sin(aiRotation);
+    float c = cos(aiRotation);
+    pos.x = aPos.x * c - aPos.y * s;
+    // -(...) because in our coordinate system y grows down
+    pos.y = -(aPos.x * s + aPos.y * c);
 
+    // convert to world coordinates
     //                              see static vbo buffer
-    vec2 vertexWorld = (vertexRot + vec2(0.5)) * size + pos;
-    vec2 vertexClip = (vertexWorld - cameraPos) * vec2(2.0) / cameraSize
-        + vec2(-1.0);
+    pos = (pos + vec2(0.5)) * aiSize + aiPos;
 
+    // convert to clip space
+    pos = (pos - cameraPos) * vec2(2.0) / cameraSize
+          + vec2(-1.0);
     // in OpenGL y grows up, we have to do the flipping
-    vertexClip.y *= -1.0;
-    gl_Position = vec4(vertexClip, 0.0, 1.0);
+    pos.y *= -1.0;
+    gl_Position = vec4(pos, 0.0, 1.0);
 }
 )";
 
 const char* const fragmentSrc = R"(
 #version 330
+
 in vec4 vColor;
+in vec2 vTexCoord;
+
+uniform sampler2D sampler;
+uniform bool useTexture = false;
+
 out vec4 color;
+
 void main()
 {
     color = vColor;
+
+    if(useTexture)
+    {
+        color *= texture(sampler, vTexCoord);
+    }
 }
 )";
 
@@ -125,25 +213,12 @@ static GLuint createProgram(const char* const vertexSrc, const char* const fragm
     }
 }
 
-struct vec2
-{
-    float x;
-    float y;
-};
-
-struct vec4
-{
-    float x;
-    float y;
-    float z;
-    float w;
-};
-
 struct Rect
 {
     vec2 pos;
     vec2 size;
     vec4 color = {1.f, 1.f, 1.f, 1.f};
+    vec4 texRect = {0.f, 0.f, 1.f, 1.f};
     float rotation = 0.f;
 };
 
@@ -188,12 +263,12 @@ int main()
 
     float vertices[] = 
     {
-        -0.5f, -0.5f,
-        0.5f, -0.5f,
-        0.5f, 0.5f,
-        0.5f, 0.5f,
-        -0.5f, 0.5f,
-        -0.5f, -0.5f
+        -0.5f, -0.5f, 0.f, 1.f,
+        0.5f, -0.5f, 1.f, 1.f,
+        0.5f, 0.5f, 1.f, 0.f,
+        0.5f, 0.5f, 1.f, 0.f,
+        -0.5f, 0.5f, 0.f, 0.f,
+        -0.5f, -0.5f, 0.f, 1.f
     };
 
     // static buffer
@@ -201,7 +276,7 @@ int main()
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
 
     glBindVertexArray(vao);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, nullptr);
     glEnableVertexAttribArray(0);
 
     // dynamic instanced buffer
@@ -211,18 +286,22 @@ int main()
     glEnableVertexAttribArray(2);
     glEnableVertexAttribArray(3);
     glEnableVertexAttribArray(4);
+    glEnableVertexAttribArray(5);
     glVertexAttribDivisor(1, 1);
     glVertexAttribDivisor(2, 1);
     glVertexAttribDivisor(3, 1);
     glVertexAttribDivisor(4, 1);
+    glVertexAttribDivisor(5, 1);
 
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Rect), nullptr);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Rect),
-            (const void*)offsetof(Rect, size));
+                          (const void*)offsetof(Rect, size));
     glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Rect),
-            (const void*)offsetof(Rect, color));
-    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Rect),
-            (const void*)offsetof(Rect, rotation));
+                          (const void*)offsetof(Rect, color));
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Rect),
+                          (const void*)offsetof(Rect, texRect));
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(Rect),
+                          (const void*)offsetof(Rect, rotation));
 
     Rect rect;
     rect.pos = {20.f, 20.f};
@@ -232,6 +311,11 @@ int main()
     Camera camera;
     camera.pos = {0.f, 0.f};
     camera.size = {100.f, 100.f};
+
+    Texture texture = createTextureFromFile("lol.png");
+    
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
     double time = glfwGetTime();
 
@@ -273,19 +357,23 @@ int main()
             pos.y -= (size.y - camera.size.y) / 2.f;
 
             glUniform2f(glGetUniformLocation(program, "cameraPos"), pos.x, pos.y);
-            glUniform2f(glGetUniformLocation(program, "cameraSize"), size.x, size.y);
+            glUniform2f(glGetUniformLocation(program, "cameraSize"), size.x,
+                        size.y);
+            glUniform1i(glGetUniformLocation(program, "useTexture"), true);
         }
 
 
         glBindBuffer(GL_ARRAY_BUFFER, vboInst);
         glBufferData(GL_ARRAY_BUFFER, sizeof(Rect), &rect, GL_DYNAMIC_DRAW);
 
+        bindTexture(texture);
         glUseProgram(program);
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 1);
 
         glfwSwapBuffers(window);
     }
 
+    deleteTexture(texture);
     glDeleteVertexArrays(1, &vao);
     glDeleteBuffers(1, &vbo);
     glDeleteBuffers(1, &vboInst);
