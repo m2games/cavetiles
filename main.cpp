@@ -114,7 +114,7 @@ void main()
     pos.y = -(aPos.x * s + aPos.y * c);
 
     // convert to world coordinates
-    //                              see static vbo buffer
+    //           see static vbo buffer
     pos = (pos + vec2(0.5)) * aiSize + aiPos;
 
     // convert to clip space
