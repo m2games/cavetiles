@@ -1,5 +1,5 @@
 todo:
-1) font
-2) vector
-3) build system
+1) font rendering + light rendering system
+2) build system
+3) audio
 4) hash map

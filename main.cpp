@@ -6,6 +6,12 @@
 #include "stb_image.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw_gl3.h"
+#include "Array.hpp"
+#include "imgui/stb_truetype.h"
+#include <cstring>
+
+#undef max
+#define max(a,b) ((a) > (b) ? (a) : (b))
 
 static void errorCallback(int error, const char* description)
 {
@@ -35,31 +41,9 @@ struct vec4
 
 struct Texture
 {
-    ivec2 size = {0, 0};
-    GLuint id = 0;
+    ivec2 size;
+    GLuint id;
 };
-
-struct Glyph
-{
-    vec4 texRect;
-    float advance;
-    vec2 offset;
-};
-
-struct Font
-{
-    Texture texture;
-    Glyph glyphs[126];
-    float lineSpace;
-};
-
-Font createFontFromFile(const char* const filename, int textureWidth)
-{
-    // @TODO(matiTechno)
-    (void)filename;
-    (void)textureWidth;
-    return {};
-}
 
 static void bindTexture(const Texture& texture, const GLuint unit = 0)
 {
@@ -67,7 +51,23 @@ static void bindTexture(const Texture& texture, const GLuint unit = 0)
     glBindTexture(GL_TEXTURE_2D, texture.id);
 }
 
-// delete it with deleteTexture()
+// delete with deleteTexture()
+static Texture createDefaultTexture()
+{
+    Texture tex;
+    glGenTextures(1, &tex.id);
+    bindTexture(tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    tex.size = {1, 1};
+    const unsigned char color[] = {0, 255, 0, 255};
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tex.size.x, tex.size.y, 0,
+            GL_RGBA, GL_UNSIGNED_BYTE, color);
+    
+    return tex;
+}
+
+// delete with deleteTexture()
 static Texture createTextureFromFile(const char* const filename)
 {
     Texture tex;
@@ -101,6 +101,144 @@ static Texture createTextureFromFile(const char* const filename)
 static inline void deleteTexture(const Texture& texture)
 {
     glDeleteTextures(1, &texture.id);
+}
+
+struct Glyph
+{
+    vec4 texRect;
+    float advance;
+    vec2 offset;
+};
+
+struct Font
+{
+    Texture texture;
+    Glyph glyphs[127];
+    float lineSpace;
+};
+
+// delete with deleteFont()
+static Font createFontFromFile(const char* const filename, const int fontSize,
+                               const int textureWidth)
+{
+    Font font;
+    font.texture = createDefaultTexture();
+
+    FILE* fp = fopen(filename, "rb");
+    if(!fp)
+    {
+        printf("createFontFromFile() could not open file: %s\n", filename);
+        return font;
+    }
+
+    Array<unsigned char> buffer;
+    {
+        fseek(fp, 0, SEEK_END);
+        const int size = ftell(fp);
+        rewind(fp);
+        buffer.resize(size);
+        fread(buffer.data(), sizeof(char), buffer.size(), fp);
+        fclose(fp);
+    }
+
+    stbtt_fontinfo fontInfo;
+
+    if(stbtt_InitFont(&fontInfo, buffer.data(), 0) == 0)
+    {
+        printf("stbtt_InitFont() failed: %s\n", filename);
+        return font;
+    }
+
+    const float scale = stbtt_ScaleForPixelHeight(&fontInfo, fontSize);
+    float ascent;
+
+    {
+        int descent, lineSpace, ascent_;
+        stbtt_GetFontVMetrics(&fontInfo, &ascent_, &descent, &lineSpace);
+        font.lineSpace = (ascent_ - descent + lineSpace) * scale;
+        ascent = ascent_ * scale;
+    }
+
+    unsigned char* bitmaps[127];
+    int maxBitmapSizeY = 0;
+    ivec2 pos = {0, 0};
+    for(int i = 32; i < 127; ++i)
+    {
+        const int idx = stbtt_FindGlyphIndex(&fontInfo, i);
+
+        if(idx == 0)
+        {
+            printf("stbtt_FindGlyphIndex(%d) failed\n", i);
+            continue;
+        }
+
+        Glyph& glyph = font.glyphs[i];
+        int advance;
+        int dummy;
+        stbtt_GetGlyphHMetrics(&fontInfo, idx, &advance, &dummy);
+        glyph.advance = advance * scale;
+
+        ivec2 offset;
+        ivec2 size;
+        bitmaps[i] = stbtt_GetGlyphBitmap(&fontInfo, scale, scale, idx, &size.x, &size.y,
+                                          &offset.x, &offset.y);
+
+        glyph.offset.x = offset.x;
+        glyph.offset.y = ascent + offset.y;
+        glyph.texRect.z = size.x;
+        glyph.texRect.w = size.y;
+
+        if(pos.x + glyph.texRect.z > textureWidth)
+        {
+            pos.x = 0;
+            pos.y += maxBitmapSizeY + 1;
+            maxBitmapSizeY = 0;
+        }
+
+        glyph.texRect.x = pos.x;
+        glyph.texRect.y = pos.y;
+
+        pos.x += glyph.texRect.z + 1;
+        maxBitmapSizeY = max(maxBitmapSizeY, glyph.texRect.w);
+    }
+
+    font.texture.size = {textureWidth, pos.y + maxBitmapSizeY};
+
+    Array<unsigned char> clearBuf;
+    clearBuf.resize(font.texture.size.x * font.texture.size.y);
+    memset(clearBuf.data(), 0, clearBuf.size());
+
+    GLint unpackAlignment;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    bindTexture(font.texture);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, font.texture.size.x, font.texture.size.y, 0,
+                 GL_RED, GL_UNSIGNED_BYTE, clearBuf.data());
+
+
+    for(int i = 32; i < 127; ++i)
+    {
+        const vec4& texRect = font.glyphs[i].texRect;
+        glTexSubImage2D(GL_TEXTURE_2D, 0, texRect.x, texRect.y, texRect.z, texRect.w,
+                        GL_RED, GL_UNSIGNED_BYTE, bitmaps[i]);
+    }
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
+
+
+    for(int i = 32; i < 127; ++i)
+    {
+        stbtt_FreeBitmap(bitmaps[i], nullptr);
+    }
+
+    return font;
+}
+
+static void deleteFont(Font& font)
+{
+    deleteTexture(font.texture);
 }
 
 const char* const vertexSrc = R"(
@@ -192,7 +330,7 @@ static bool isCompileError(const GLuint shader)
 }
 
 // returns 0 on failure
-// program must be deleted with glDeleteProgram()
+// program must be deleted with glDeleteProgram() (if != 0)
 static GLuint createProgram(const char* const vertexSrc, const char* const fragmentSrc)
 {
     const GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
@@ -343,6 +481,8 @@ int main()
     camera.size = {100.f, 100.f};
 
     Texture texture = createTextureFromFile("res/github.png");
+
+    Font font = createFontFromFile("res/Exo2-Black.otf", 30, 256);
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -390,8 +530,7 @@ int main()
             pos.y -= (size.y - camera.size.y) / 2.f;
 
             glUniform2f(glGetUniformLocation(program, "cameraPos"), pos.x, pos.y);
-            glUniform2f(glGetUniformLocation(program, "cameraSize"), size.x,
-                        size.y);
+            glUniform2f(glGetUniformLocation(program, "cameraSize"), size.x, size.y);
             glUniform1i(glGetUniformLocation(program, "useTexture"), true);
         }
 
@@ -418,6 +557,7 @@ int main()
     ImGui_ImplGlfwGL3_Shutdown();
     ImGui::DestroyContext();
 
+    deleteFont(font);
     deleteTexture(texture);
     glDeleteVertexArrays(1, &vao);
     glDeleteBuffers(1, &vbo);
