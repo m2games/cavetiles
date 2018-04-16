@@ -474,8 +474,8 @@ int writeTextToBuffer(const Text& text, const Font& font, Rect* buffer, const in
         rect.color = text.color;
         rect.texRect.x = glyph.texRect.x / font.texture.size.x;
         rect.texRect.y = glyph.texRect.y / font.texture.size.y;
-        rect.texRect.z = glyph.texRect.w / font.texture.size.x;
-        rect.texRect.w = glyph.texRect.z / font.texture.size.y;
+        rect.texRect.z = glyph.texRect.z / font.texture.size.x;
+        rect.texRect.w = glyph.texRect.w / font.texture.size.y;
         rect.rotation = 0.f;
 
         ++count;
@@ -641,7 +641,7 @@ int main()
         glBindBuffer(GL_ARRAY_BUFFER, vboInst);
         glBindVertexArray(vao);
 
-        // recfbH
+        // rect
         glBufferData(GL_ARRAY_BUFFER, sizeof(Rect), &rect, GL_DYNAMIC_DRAW);
         bindTexture(texture);
         glUniform1i(glGetUniformLocation(program, "mode"), FragmentMode::Texture);
