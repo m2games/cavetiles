@@ -1,4 +1,4 @@
-CC= g++ -std=c++11 -Wall -Wextra -pedantic -fno-exceptions -fno-rtti -O3
+CC= g++ -std=c++11 -Wall -Wextra -pedantic -fno-exceptions -fno-rtti -g
 
 all: stb.o
 	$(CC) main.cpp glad.c stb.o -o cavetiles \

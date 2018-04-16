@@ -57,8 +57,8 @@ static Texture createDefaultTexture()
     Texture tex;
     glGenTextures(1, &tex.id);
     bindTexture(tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     tex.size = {1, 1};
     const unsigned char color[] = {0, 255, 0, 255};
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tex.size.x, tex.size.y, 0,
@@ -73,8 +73,8 @@ static Texture createTextureFromFile(const char* const filename)
     Texture tex;
     glGenTextures(1, &tex.id);
     bindTexture(tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     unsigned char* const data = stbi_load(filename, &tex.size.x, &tex.size.y,
                                           nullptr, 4);
@@ -217,7 +217,6 @@ static Font createFontFromFile(const char* const filename, const int fontSize,
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, font.texture.size.x, font.texture.size.y, 0,
                  GL_RED, GL_UNSIGNED_BYTE, clearBuf.data());
 
-
     for(int i = 32; i < 127; ++i)
     {
         const vec4& texRect = font.glyphs[i].texRect;
@@ -287,6 +286,16 @@ void main()
 }
 )";
 
+struct FragmentMode
+{
+    enum
+    {
+        Color = 0,
+        Texture = 1,
+        Font = 2
+    };
+};
+
 const char* const fragmentSrc = R"(
 #version 330
 
@@ -294,7 +303,7 @@ in vec4 vColor;
 in vec2 vTexCoord;
 
 uniform sampler2D sampler;
-uniform bool useTexture = false;
+uniform int mode = 0;
 
 out vec4 color;
 
@@ -302,12 +311,17 @@ void main()
 {
     color = vColor;
 
-    if(useTexture)
+    if(mode == 1)
     {
         vec4 texColor = texture(sampler, vTexCoord);
         // premultiply alpha
-        texColor.rgb *= texColor.a;
+        // texColor.rgb *= texColor.a;
         color *= texColor;
+    }
+    else if(mode == 2)
+    {
+        float alpha = texture(sampler, vTexCoord).r;
+        color *= alpha;
     }
 }
 )";
@@ -377,6 +391,8 @@ static GLuint createProgram(const char* const vertexSrc, const char* const fragm
     }
 }
 
+// @TODO(matiTechno)
+// add origin for rotation (needed to properly rotate a text)
 struct Rect
 {
     vec2 pos;
@@ -385,6 +401,91 @@ struct Rect
     vec4 texRect = {0.f, 0.f, 1.f, 1.f};
     float rotation = 0.f;
 };
+
+struct Text
+{
+    vec2 pos;
+    vec4 color = {1.f, 1.f, 1.f, 1.f};
+    //float rotation = 0.f;
+    float scale = 1.f;
+    const char* str = "";
+};
+
+vec2 getTextSize(const Text& text, const Font& font)
+{
+    float x = 0.f;
+    const float lineSpace = font.lineSpace * text.scale;
+    vec2 size = {0.f, lineSpace};
+    const int strLen = strlen(text.str);
+
+    for(int i = 0; i < strLen; ++i)
+    {
+        const char c = text.str[i];
+
+        if(c == '\n')
+        {
+            size.x = max(size.x, x);
+            x = 0.f;
+            size.y += lineSpace;
+            continue;
+        }
+
+        //                               warning fix
+        const Glyph& glyph = font.glyphs[int(c)];
+        x += glyph.advance * text.scale;
+    }
+    
+    size.x = max(size.x, x);
+    return size;
+}
+
+
+// returns the number of rects written
+int writeTextToBuffer(const Text& text, const Font& font, Rect* buffer, const int maxSize)
+{
+    int count = 0;
+    const char* str = text.str;
+    vec2 penPos = text.pos;
+
+    while(true)
+    {
+        const char c = *str;
+        
+        if(c == '\0')
+            break;
+
+        if(c == '\n')
+        {
+            penPos.x = text.pos.x;
+            penPos.y += font.lineSpace * text.scale;
+            ++str;
+            continue;
+        }
+
+        //                               warning fix
+        const Glyph& glyph = font.glyphs[int(c)];
+
+        Rect& rect = buffer[count];
+        // @TODO(matiTechno): vec2 add
+        rect.pos.x = penPos.x + glyph.offset.x * text.scale;
+        rect.pos.y = penPos.y + glyph.offset.y * text.scale;
+        rect.size.x = glyph.texRect.z * text.scale;
+        rect.size.y = glyph.texRect.w * text.scale;
+        rect.color = text.color;
+        rect.texRect.x = glyph.texRect.x / font.texture.size.x;
+        rect.texRect.y = glyph.texRect.y / font.texture.size.y;
+        rect.texRect.z = glyph.texRect.w / font.texture.size.x;
+        rect.texRect.w = glyph.texRect.z / font.texture.size.y;
+        rect.rotation = 0.f;
+
+        ++count;
+        assert(count <= maxSize);
+        penPos.x += glyph.advance * text.scale;
+        ++str;
+    }
+
+    return count;
+}
 
 struct Camera
 {
@@ -483,9 +584,16 @@ int main()
     Texture texture = createTextureFromFile("res/github.png");
 
     Font font = createFontFromFile("res/Exo2-Black.otf", 30, 256);
+
+    Text text;
+    text.pos = {50.f, 50.f};
+    text.str = "This is a demo text.\nMultiline!";
+
+    Rect textRects[500];
+    int numTextRects = writeTextToBuffer(text, font, textRects, 500);
     
     glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     double time = glfwGetTime();
 
@@ -502,45 +610,53 @@ int main()
 
         rect.rotation += dt;
 
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
+        int fbWidth, fbHeight;
+        glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
 
-        glViewport(0, 0, width, height);
+        glViewport(0, 0, fbWidth, fbHeight);
         glClearColor(0.1f, 0.1f, 0.1f, 0.f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         // adjust the camera to the aspect ratio
+        const float viewportAspect = float(fbWidth) / fbHeight;
+        const float cameraAspect = camera.size.x / camera.size.y;
+
+        vec2 size = camera.size;
+        vec2 pos = camera.pos;
+
+        if(viewportAspect > cameraAspect)
         {
-            const float viewportAspect = float(width) / height;
-            const float cameraAspect = camera.size.x / camera.size.y;
-
-            vec2 size = camera.size;
-            vec2 pos = camera.pos;
-
-            if(viewportAspect > cameraAspect)
-            {
-                size.x = size.y * viewportAspect;
-            }
-            else if(viewportAspect < cameraAspect)
-            {
-                size.y = size.x / viewportAspect;
-            }
-
-            pos.x -= (size.x - camera.size.x) / 2.f;
-            pos.y -= (size.y - camera.size.y) / 2.f;
-
-            glUniform2f(glGetUniformLocation(program, "cameraPos"), pos.x, pos.y);
-            glUniform2f(glGetUniformLocation(program, "cameraSize"), size.x, size.y);
-            glUniform1i(glGetUniformLocation(program, "useTexture"), true);
+            size.x = size.y * viewportAspect;
+        }
+        else if(viewportAspect < cameraAspect)
+        {
+            size.y = size.x / viewportAspect;
         }
 
+        pos.x -= (size.x - camera.size.x) / 2.f;
+        pos.y -= (size.y - camera.size.y) / 2.f;
 
-        glBindBuffer(GL_ARRAY_BUFFER, vboInst);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(Rect), &rect, GL_DYNAMIC_DRAW);
-
-        bindTexture(texture);
+        // --- render ---
         glUseProgram(program);
+        glBindBuffer(GL_ARRAY_BUFFER, vboInst);
+        glBindVertexArray(vao);
+
+        // recfbH
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Rect), &rect, GL_DYNAMIC_DRAW);
+        bindTexture(texture);
+        glUniform1i(glGetUniformLocation(program, "mode"), FragmentMode::Texture);
+        glUniform2f(glGetUniformLocation(program, "cameraPos"), pos.x, pos.y);
+        glUniform2f(glGetUniformLocation(program, "cameraSize"), size.x, size.y);
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 1);
+
+        // font
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Rect) * numTextRects, &textRects,
+                     GL_DYNAMIC_DRAW);
+        bindTexture(font.texture);
+        glUniform1i(glGetUniformLocation(program, "mode"), FragmentMode::Font);
+        glUniform2f(glGetUniformLocation(program, "cameraPos"), 0.f, 0.f);
+        glUniform2f(glGetUniformLocation(program, "cameraSize"), fbWidth, fbHeight);
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, numTextRects);
 
         ImGui::Begin("options");
         ImGui::Text("dear imgui test!");
