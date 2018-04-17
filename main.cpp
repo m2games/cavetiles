@@ -7,6 +7,7 @@
 #include "imgui/imgui_impl_glfw_gl3.h"
 #include "Array.hpp"
 #include <cstring>
+#include "Scene.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -15,42 +16,54 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "imgui/stb_truetype.h"
 
-#undef max
-#define max(a,b) ((a) > (b) ? (a) : (b))
+// TODO(matiTechno): inline?
 
-static void errorCallback(int error, const char* description)
+void uniform1i(const GLuint program, const char* const name, const int i)
+{
+    glUniform1i(glGetUniformLocation(program, name), i);
+}
+
+void uniform1f(const GLuint program, const char* const name, const float f)
+{
+    glUniform1f(glGetUniformLocation(program, name), f);
+}
+
+void uniform2f(const GLuint program, const char* const name, const float f1, const float f2)
+{
+    glUniform2f(glGetUniformLocation(program, name), f1, f2);
+}
+
+void uniform2f(const GLuint program, const char* const name, const vec2 v)
+{
+    glUniform2f(glGetUniformLocation(program, name), v.x, v.y);
+}
+
+// TODO(matiTechno): vec3 Type + uniform3f(vec3)?
+
+void uniform3f(const GLuint program, const char* const name, const float f1, const float f2,
+               const float f3)
+{
+    glUniform3f(glGetUniformLocation(program, name), f1, f2, f3);
+}
+
+void uniform4f(const GLuint program, const char* const name, const float f1, const float f2,
+               const float f3, const float f4)
+{
+    glUniform4f(glGetUniformLocation(program, name), f1, f2, f3, f4);
+}
+
+void uniform4f(const GLuint program, const char* const name, const vec4 v)
+{
+    glUniform4f(glGetUniformLocation(program, name), v.x, v.y, v.z, v.w);
+}
+
+static void errorCallback(const int error, const char* const description)
 {
     (void)error;
     printf("GLFW error: %s\n", description);
 }
 
-struct ivec2
-{
-    int x;
-    int y;
-};
-
-struct vec2
-{
-    float x;
-    float y;
-};
-
-struct vec4
-{
-    float x;
-    float y;
-    float z;
-    float w;
-};
-
-struct Texture
-{
-    ivec2 size;
-    GLuint id;
-};
-
-static void bindTexture(const Texture& texture, const GLuint unit = 0)
+void bindTexture(const Texture& texture, const GLuint unit)
 {
     glActiveTexture(GL_TEXTURE0 + unit);
     glBindTexture(GL_TEXTURE_2D, texture.id);
@@ -73,7 +86,7 @@ static Texture createDefaultTexture()
 }
 
 // delete with deleteTexture()
-static Texture createTextureFromFile(const char* const filename)
+Texture createTextureFromFile(const char* const filename)
 {
     Texture tex;
     glGenTextures(1, &tex.id);
@@ -103,28 +116,13 @@ static Texture createTextureFromFile(const char* const filename)
     return tex;
 }
 
-static inline void deleteTexture(const Texture& texture)
+void deleteTexture(const Texture& texture)
 {
     glDeleteTextures(1, &texture.id);
 }
 
-struct Glyph
-{
-    vec4 texRect;
-    float advance;
-    vec2 offset;
-};
-
-struct Font
-{
-    Texture texture;
-    Glyph glyphs[127];
-    float lineSpace;
-};
-
 // delete with deleteFont()
-static Font createFontFromFile(const char* const filename, const int fontSize,
-                               const int textureWidth)
+Font createFontFromFile(const char* const filename, const int fontSize, const int textureWidth)
 {
     Font font;
     font.texture = createDefaultTexture();
@@ -240,7 +238,7 @@ static Font createFontFromFile(const char* const filename, const int fontSize,
     return font;
 }
 
-static void deleteFont(Font& font)
+void deleteFont(Font& font)
 {
     deleteTexture(font.texture);
 }
@@ -291,16 +289,6 @@ void main()
 }
 )";
 
-struct FragmentMode
-{
-    enum
-    {
-        Color = 0,
-        Texture = 1,
-        Font = 2
-    };
-};
-
 const char* const fragmentSrc = R"(
 #version 330
 
@@ -349,8 +337,8 @@ static bool isCompileError(const GLuint shader)
 }
 
 // returns 0 on failure
-// program must be deleted with glDeleteProgram() (if != 0)
-static GLuint createProgram(const char* const vertexSrc, const char* const fragmentSrc)
+// program must be deleted with deleteProgram() (if != 0)
+GLuint createProgram(const char* const vertexSrc, const char* const fragmentSrc)
 {
     const GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertex, 1, &vertexSrc, nullptr);
@@ -396,25 +384,10 @@ static GLuint createProgram(const char* const vertexSrc, const char* const fragm
     }
 }
 
-// @TODO(matiTechno)
-// add origin for rotation (needed to properly rotate a text)
-struct Rect
+void deleteProgram(const GLuint program)
 {
-    vec2 pos;
-    vec2 size;
-    vec4 color = {1.f, 1.f, 1.f, 1.f};
-    vec4 texRect = {0.f, 0.f, 1.f, 1.f};
-    float rotation = 0.f;
-};
-
-struct Text
-{
-    vec2 pos;
-    vec4 color = {1.f, 1.f, 1.f, 1.f};
-    //float rotation = 0.f;
-    float scale = 1.f;
-    const char* str = "";
-};
+    glDeleteProgram(program);
+}
 
 vec2 getTextSize(const Text& text, const Font& font)
 {
@@ -443,13 +416,6 @@ vec2 getTextSize(const Text& text, const Font& font)
     size.x = max(size.x, x);
     return size;
 }
-
-struct GLBuffers
-{
-    GLuint vao;
-    GLuint vbo;
-    GLuint rectBo;
-};
 
 // delete with deleteGLBuffers()
 GLBuffers createGLBuffers()
@@ -504,14 +470,20 @@ GLBuffers createGLBuffers()
     return glBuffers;
 }
 
-void fillGLRectBuffer(GLuint rectBo, const Rect* rects, int count)
+void fillGLRectBuffer(const GLuint rectBo, const Rect* const rects, const int count)
 {
     glBindBuffer(GL_ARRAY_BUFFER, rectBo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(Rect) * count, rects, GL_DYNAMIC_DRAW);
 }
 
-// call glUseProgram() first
-void renderGLBuffer(GLuint vao, int numRects)
+// TODO(matiTechno): do we need these?
+void bindProgram(const GLuint program)
+{
+    glUseProgram(program);
+}
+
+// call bindProgram() first
+void renderGLBuffer(const GLuint vao, const int numRects)
 {
     glBindVertexArray(vao);
     glDrawArraysInstanced(GL_TRIANGLES, 0, 6, numRects);
@@ -525,7 +497,8 @@ void deleteGLBuffers(GLBuffers& glBuffers)
 }
 
 // returns the number of rects written
-int writeTextToBuffer(const Text& text, const Font& font, Rect* buffer, const int maxSize)
+int writeTextToBuffer(const Text& text, const Font& font, Rect* const buffer,
+                      const int maxSize)
 {
     int count = 0;
     const char* str = text.str;
@@ -570,12 +543,6 @@ int writeTextToBuffer(const Text& text, const Font& font, Rect* buffer, const in
 
     return count;
 }
-
-struct Camera
-{
-    vec2 pos;
-    vec2 size;
-};
 
 int main()
 {
@@ -675,13 +642,13 @@ int main()
         pos.x -= (size.x - camera.size.x) / 2.f;
         pos.y -= (size.y - camera.size.y) / 2.f;
 
-        glUseProgram(program);
+        bindProgram(program);
 
         // rect
         {
-            glUniform1i(glGetUniformLocation(program, "mode"), FragmentMode::Texture);
-            glUniform2f(glGetUniformLocation(program, "cameraPos"), pos.x, pos.y);
-            glUniform2f(glGetUniformLocation(program, "cameraSize"), size.x, size.y);
+            uniform1i(program, "mode", FragmentMode::Texture);
+            uniform2f(program, "cameraPos", pos);
+            uniform2f(program, "cameraSize", size);
 
             bindTexture(texture);
             fillGLRectBuffer(glBuffers.rectBo, &rect, 1);
@@ -690,9 +657,9 @@ int main()
 
         // font
         {
-            glUniform1i(glGetUniformLocation(program, "mode"), FragmentMode::Font);
-            glUniform2f(glGetUniformLocation(program, "cameraPos"), 0.f, 0.f);
-            glUniform2f(glGetUniformLocation(program, "cameraSize"), fbWidth, fbHeight);
+            uniform1i(program, "mode", FragmentMode::Font);
+            uniform2f(program, "cameraPos", 0.f, 0.f);
+            uniform2f(program, "cameraSize", fbWidth, fbHeight);
 
             fillGLRectBuffer(glBuffers.rectBo, textRects, numTextRects);
             bindTexture(font.texture);
@@ -704,6 +671,8 @@ int main()
         if(ImGui::Button("quit"))
             quit = true;
         ImGui::End();
+
+        ImGui::ShowDemoWindow();
 
         ImGui::Render();
         ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
@@ -717,7 +686,7 @@ int main()
     deleteFont(font);
     deleteTexture(texture);
     deleteGLBuffers(glBuffers);
-    glDeleteProgram(program);
+    deleteProgram(program);
 
     glfwTerminate();
     return EXIT_SUCCESS;
