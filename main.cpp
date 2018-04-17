@@ -3,12 +3,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include "stb_image.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw_gl3.h"
 #include "Array.hpp"
-#include "imgui/stb_truetype.h"
 #include <cstring>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#define STB_RECT_PACK_IMPLEMENTATION
+#include "imgui/stb_rect_pack.h"
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "imgui/stb_truetype.h"
 
 #undef max
 #define max(a,b) ((a) > (b) ? (a) : (b))
@@ -439,6 +444,85 @@ vec2 getTextSize(const Text& text, const Font& font)
     return size;
 }
 
+struct GLBuffers
+{
+    GLuint vao;
+    GLuint vbo;
+    GLuint rectBo;
+};
+
+// delete with deleteGLBuffers()
+GLBuffers createGLBuffers()
+{
+    GLBuffers glBuffers;
+    glGenVertexArrays(1, &glBuffers.vao);
+    glGenBuffers(1, &glBuffers.vbo);
+    glGenBuffers(1, &glBuffers.rectBo);
+
+    float vertices[] = 
+    {
+        -0.5f, -0.5f, 0.f, 1.f,
+        0.5f, -0.5f, 1.f, 1.f,
+        0.5f, 0.5f, 1.f, 0.f,
+        0.5f, 0.5f, 1.f, 0.f,
+        -0.5f, 0.5f, 0.f, 0.f,
+        -0.5f, -0.5f, 0.f, 1.f
+    };
+
+    // static buffer
+    glBindBuffer(GL_ARRAY_BUFFER, glBuffers.vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+
+    glBindVertexArray(glBuffers.vao);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(0);
+
+    // dynamic instanced buffer
+    glBindBuffer(GL_ARRAY_BUFFER, glBuffers.rectBo);
+
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
+    glEnableVertexAttribArray(4);
+    glEnableVertexAttribArray(5);
+    glVertexAttribDivisor(1, 1);
+    glVertexAttribDivisor(2, 1);
+    glVertexAttribDivisor(3, 1);
+    glVertexAttribDivisor(4, 1);
+    glVertexAttribDivisor(5, 1);
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Rect), nullptr);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Rect),
+                          (const void*)offsetof(Rect, size));
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Rect),
+                          (const void*)offsetof(Rect, color));
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Rect),
+                          (const void*)offsetof(Rect, texRect));
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(Rect),
+                          (const void*)offsetof(Rect, rotation));
+
+    return glBuffers;
+}
+
+void fillGLRectBuffer(GLuint rectBo, const Rect* rects, int count)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, rectBo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Rect) * count, rects, GL_DYNAMIC_DRAW);
+}
+
+// call glUseProgram() first
+void renderGLBuffer(GLuint vao, int numRects)
+{
+    glBindVertexArray(vao);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, 6, numRects);
+}
+
+void deleteGLBuffers(GLBuffers& glBuffers)
+{
+    glDeleteVertexArrays(1, &glBuffers.vao);
+    glDeleteBuffers(1, &glBuffers.vbo);
+    glDeleteBuffers(1, &glBuffers.rectBo);
+}
 
 // returns the number of rects written
 int writeTextToBuffer(const Text& text, const Font& font, Rect* buffer, const int maxSize)
@@ -525,52 +609,7 @@ int main()
 
     GLuint program = createProgram(vertexSrc, fragmentSrc);
 
-    GLuint vao, vbo, vboInst;
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-    glGenBuffers(1, &vboInst);
-
-    float vertices[] = 
-    {
-        -0.5f, -0.5f, 0.f, 1.f,
-        0.5f, -0.5f, 1.f, 1.f,
-        0.5f, 0.5f, 1.f, 0.f,
-        0.5f, 0.5f, 1.f, 0.f,
-        -0.5f, 0.5f, 0.f, 0.f,
-        -0.5f, -0.5f, 0.f, 1.f
-    };
-
-    // static buffer
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
-
-    glBindVertexArray(vao);
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, nullptr);
-    glEnableVertexAttribArray(0);
-
-    // dynamic instanced buffer
-    glBindBuffer(GL_ARRAY_BUFFER, vboInst);
-
-    glEnableVertexAttribArray(1);
-    glEnableVertexAttribArray(2);
-    glEnableVertexAttribArray(3);
-    glEnableVertexAttribArray(4);
-    glEnableVertexAttribArray(5);
-    glVertexAttribDivisor(1, 1);
-    glVertexAttribDivisor(2, 1);
-    glVertexAttribDivisor(3, 1);
-    glVertexAttribDivisor(4, 1);
-    glVertexAttribDivisor(5, 1);
-
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Rect), nullptr);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Rect),
-                          (const void*)offsetof(Rect, size));
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Rect),
-                          (const void*)offsetof(Rect, color));
-    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Rect),
-                          (const void*)offsetof(Rect, texRect));
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(Rect),
-                          (const void*)offsetof(Rect, rotation));
+    GLBuffers glBuffers = createGLBuffers();
 
     Rect rect;
     rect.pos = {20.f, 20.f};
@@ -636,27 +675,29 @@ int main()
         pos.x -= (size.x - camera.size.x) / 2.f;
         pos.y -= (size.y - camera.size.y) / 2.f;
 
-        // --- render ---
         glUseProgram(program);
-        glBindBuffer(GL_ARRAY_BUFFER, vboInst);
-        glBindVertexArray(vao);
 
         // rect
-        glBufferData(GL_ARRAY_BUFFER, sizeof(Rect), &rect, GL_DYNAMIC_DRAW);
-        bindTexture(texture);
-        glUniform1i(glGetUniformLocation(program, "mode"), FragmentMode::Texture);
-        glUniform2f(glGetUniformLocation(program, "cameraPos"), pos.x, pos.y);
-        glUniform2f(glGetUniformLocation(program, "cameraSize"), size.x, size.y);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 1);
+        {
+            glUniform1i(glGetUniformLocation(program, "mode"), FragmentMode::Texture);
+            glUniform2f(glGetUniformLocation(program, "cameraPos"), pos.x, pos.y);
+            glUniform2f(glGetUniformLocation(program, "cameraSize"), size.x, size.y);
+
+            bindTexture(texture);
+            fillGLRectBuffer(glBuffers.rectBo, &rect, 1);
+            glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 1);
+        }
 
         // font
-        glBufferData(GL_ARRAY_BUFFER, sizeof(Rect) * numTextRects, &textRects,
-                     GL_DYNAMIC_DRAW);
-        bindTexture(font.texture);
-        glUniform1i(glGetUniformLocation(program, "mode"), FragmentMode::Font);
-        glUniform2f(glGetUniformLocation(program, "cameraPos"), 0.f, 0.f);
-        glUniform2f(glGetUniformLocation(program, "cameraSize"), fbWidth, fbHeight);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, numTextRects);
+        {
+            glUniform1i(glGetUniformLocation(program, "mode"), FragmentMode::Font);
+            glUniform2f(glGetUniformLocation(program, "cameraPos"), 0.f, 0.f);
+            glUniform2f(glGetUniformLocation(program, "cameraSize"), fbWidth, fbHeight);
+
+            fillGLRectBuffer(glBuffers.rectBo, textRects, numTextRects);
+            bindTexture(font.texture);
+            glDrawArraysInstanced(GL_TRIANGLES, 0, 6, numTextRects);
+        }
 
         ImGui::Begin("options");
         ImGui::Text("dear imgui test!");
@@ -675,9 +716,7 @@ int main()
 
     deleteFont(font);
     deleteTexture(texture);
-    glDeleteVertexArrays(1, &vao);
-    glDeleteBuffers(1, &vbo);
-    glDeleteBuffers(1, &vboInst);
+    deleteGLBuffers(glBuffers);
     glDeleteProgram(program);
 
     glfwTerminate();
