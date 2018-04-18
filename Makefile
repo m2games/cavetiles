@@ -6,4 +6,4 @@ linux:
 	${COMM} ./fmod/libfmod.so.10.4 -Wl,-rpath=./fmod
 
 mac:
-	${COMM}  ./fmod/libfmod.dylib
+	${COMM} ./fmod/libfmod.dylib
