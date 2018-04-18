@@ -8,6 +8,8 @@
 #include "Array.hpp"
 #include <cstring>
 #include "Scene.hpp"
+#include "fmod/fmod.h"
+#include "fmod/fmod_errors.h"
 
 // unity build
 #include "GameScene.cpp"
@@ -778,6 +780,19 @@ private:
     } name_;
 };
 
+static bool fmodImpl(const FMOD_RESULT r, const char* const file, const int line)
+{
+    if(r != FMOD_OK)
+    {
+        printf("%s:%d FMOD error: %s\n", file, line, FMOD_ErrorString(r));
+        return false;
+    }
+    return true;
+}
+
+// returns true if function succeeded
+#define fmod(x) fmodImpl(x, __FILE__, __LINE__)
+
 int main()
 {
     glfwSetErrorCallback(errorCallback);
@@ -800,6 +815,18 @@ int main()
         glfwTerminate();
         return EXIT_FAILURE;
     }
+
+    // @TODO(matiTechno): error handling?
+    FMOD_SYSTEM* fmodSystem;
+    fmod( FMOD_System_Create(&fmodSystem) );
+    fmod( FMOD_System_Init(fmodSystem, 512, FMOD_INIT_NORMAL, 0) );
+
+    FMOD_SOUND* sound;
+
+    fmod( FMOD_System_CreateSound(fmodSystem, "res/sfx_sound_vaporizing.wav", FMOD_CREATESAMPLE, nullptr,
+                                  &sound) ); // @free
+
+    fmod( FMOD_System_PlaySound(fmodSystem, sound, nullptr, false, nullptr) );
 
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
@@ -836,6 +863,8 @@ int main()
         double newTime = glfwGetTime();
         const float dt = newTime - time;
         time = newTime;
+
+        fmod( FMOD_System_Update(fmodSystem) );
 
         events.clear();
         glfwPollEvents();
@@ -900,6 +929,9 @@ int main()
     deleteProgram(program);
     ImGui_ImplGlfwGL3_Shutdown();
     ImGui::DestroyContext();
+
+    fmod( FMOD_System_Close(fmodSystem) );
+    fmod( FMOD_System_Release(fmodSystem) );
 
     glfwTerminate();
     return EXIT_SUCCESS;
