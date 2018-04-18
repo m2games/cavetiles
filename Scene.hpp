@@ -7,6 +7,13 @@
 
 using GLuint = unsigned int;
 
+// use on plain C arrays
+template<typename T, int N>
+constexpr int getSize(T(&)[N])
+{
+    return N;
+}
+
 struct ivec2
 {
     int x;
@@ -77,12 +84,6 @@ struct Text
     const char* str = "";
 };
 
-struct Camera
-{
-    vec2 pos;
-    vec2 size;
-};
-
 struct GLBuffers
 {
     GLuint vao;
@@ -94,11 +95,11 @@ struct WinEvent
 {
     enum Type
     {
+        Nil,
         Key,
         Cursor,
         MouseButton,
-        Scroll,
-        Nil
+        Scroll
     };
 
     Type type;
@@ -160,7 +161,7 @@ void bindProgram(const GLuint program);
 GLBuffers createGLBuffers();
 void fillGLRectBuffer(GLuint rectBo, const Rect* rects, int count);
 // call bindProgram() first
-void renderGLBuffer(GLuint vao, int numRects);
+void renderGLBuffers(GLuint vao, int numRects);
 void deleteGLBuffers(GLBuffers& glBuffers);
 
 // returns the number of rects written
@@ -171,17 +172,34 @@ vec2 getTextSize(const Text& text, const Font& font);
 class Scene
 {
 public:
-    virtual void init() {}
-    virtual void shutdown() {}
+    virtual ~Scene() = default;
     virtual void processInput(const Array<WinEvent>& events) {(void)events;}
     virtual void update() {}
     virtual void render(GLuint program) {(void)program;}
 
     struct
     {
-        float time;
-        float framebufferSize;
+        // don't modify these
+        float time;  // seconds
+        vec2 fbSize; // fb = framebuffer
+
+        // @TODO(matiTechno): bool updateWhenNotTop = false;
         bool popMe = false;
-        Scene* newScene = nullptr;
+        Scene* newScene = nullptr; // assigned ptr must be returned by new
+                                   // game loop will call delete on it
     } frame_;
+};
+
+class GameScene: public Scene
+{
+public:
+    GameScene();
+    ~GameScene() override;
+    void processInput(const Array<WinEvent>& events) override;
+    void update() override;
+    void render(GLuint program) override;
+
+private:
+    float time_ = 0.f;
+    GLBuffers glBuffers;
 };

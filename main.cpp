@@ -4,10 +4,18 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw_gl3.h"
+//#include "imgui/imgui_impl_glfw_gl3.h"
 #include "Array.hpp"
 #include <cstring>
 #include "Scene.hpp"
+
+// unity build
+#include "GameScene.cpp"
+#include "glad.c"
+#include "imgui/imgui.cpp"
+#include "imgui/imgui_demo.cpp"
+#include "imgui/imgui_draw.cpp"
+#include "imgui/imgui_impl_glfw_gl3.cpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -16,45 +24,53 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "imgui/stb_truetype.h"
 
-// TODO(matiTechno): inline?
+// @TODO(matiTechno): inline?
+
+static GLint getUniformLocation(GLuint program, const char* const name)
+{
+    GLint loc = glGetUniformLocation(program, name);
+    if(loc == -1)
+        printf("program = %u: unfiform '%s' is inactive\n", program, name);
+    return loc;
+}
 
 void uniform1i(const GLuint program, const char* const name, const int i)
 {
-    glUniform1i(glGetUniformLocation(program, name), i);
+    glUniform1i(getUniformLocation(program, name), i);
 }
 
 void uniform1f(const GLuint program, const char* const name, const float f)
 {
-    glUniform1f(glGetUniformLocation(program, name), f);
+    glUniform1f(getUniformLocation(program, name), f);
 }
 
 void uniform2f(const GLuint program, const char* const name, const float f1, const float f2)
 {
-    glUniform2f(glGetUniformLocation(program, name), f1, f2);
+    glUniform2f(getUniformLocation(program, name), f1, f2);
 }
 
 void uniform2f(const GLuint program, const char* const name, const vec2 v)
 {
-    glUniform2f(glGetUniformLocation(program, name), v.x, v.y);
+    glUniform2f(getUniformLocation(program, name), v.x, v.y);
 }
 
-// TODO(matiTechno): vec3 Type + uniform3f(vec3)?
+// @TODO(matiTechno): vec3 Type + uniform3f(vec3)?
 
 void uniform3f(const GLuint program, const char* const name, const float f1, const float f2,
                const float f3)
 {
-    glUniform3f(glGetUniformLocation(program, name), f1, f2, f3);
+    glUniform3f(getUniformLocation(program, name), f1, f2, f3);
 }
 
 void uniform4f(const GLuint program, const char* const name, const float f1, const float f2,
                const float f3, const float f4)
 {
-    glUniform4f(glGetUniformLocation(program, name), f1, f2, f3, f4);
+    glUniform4f(getUniformLocation(program, name), f1, f2, f3, f4);
 }
 
 void uniform4f(const GLuint program, const char* const name, const vec4 v)
 {
-    glUniform4f(glGetUniformLocation(program, name), v.x, v.y, v.z, v.w);
+    glUniform4f(getUniformLocation(program, name), v.x, v.y, v.z, v.w);
 }
 
 static void errorCallback(const int error, const char* const description)
@@ -476,14 +492,14 @@ void fillGLRectBuffer(const GLuint rectBo, const Rect* const rects, const int co
     glBufferData(GL_ARRAY_BUFFER, sizeof(Rect) * count, rects, GL_DYNAMIC_DRAW);
 }
 
-// TODO(matiTechno): do we need these?
+// @TODO(matiTechno): do we need these?
 void bindProgram(const GLuint program)
 {
     glUseProgram(program);
 }
 
 // call bindProgram() first
-void renderGLBuffer(const GLuint vao, const int numRects)
+void renderGLBuffers(const GLuint vao, const int numRects)
 {
     glBindVertexArray(vao);
     glDrawArraysInstanced(GL_TRIANGLES, 0, 6, numRects);
@@ -544,6 +560,224 @@ int writeTextToBuffer(const Text& text, const Font& font, Rect* const buffer,
     return count;
 }
 
+static Array<WinEvent>* eventsPtr;
+
+static void keyCallback(GLFWwindow* const window, const int key, const int scancode,
+                             const int action, const int mods)
+{
+    WinEvent e;
+    e.type = WinEvent::Key;
+    e.key.key = key;
+    e.key.action = action;
+    e.key.mods = mods;
+    eventsPtr->pushBack(e);
+
+    ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
+}
+
+static void cursorPosCallback(GLFWwindow*, const double xpos, const double ypos)
+{
+    WinEvent e;
+    e.type = WinEvent::Cursor;
+    e.cursor.pos.x = xpos;
+    e.cursor.pos.y = ypos;
+    eventsPtr->pushBack(e);
+}
+
+static void mouseButtonCallback(GLFWwindow* const window, const int button, const int action,
+                                const int mods)
+{
+    WinEvent e;
+    e.type = WinEvent::MouseButton;
+    e.mouseButton.button = button;
+    e.mouseButton.action = action;
+    e.mouseButton.mods = mods;
+    eventsPtr->pushBack(e);
+
+    ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
+}
+
+static void scrollCallback(GLFWwindow* const window, const double xoffset,
+                           const double yoffset)
+{
+    WinEvent e;
+    e.type = WinEvent::Scroll;
+    e.scroll.offset.x = xoffset;
+    e.scroll.offset.y = yoffset;
+    eventsPtr->pushBack(e);
+
+    ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset);
+}
+
+static void charCallback(GLFWwindow* const window, const unsigned int codepoint)
+{
+    ImGui_ImplGlfw_CharCallback(window, codepoint);
+}
+
+class LogoScene: public Scene
+{
+public:
+    LogoScene()
+    {
+        glBuffers_ = createGLBuffers();
+        texture_ = createTextureFromFile("res/github.png");
+        font_ = createFontFromFile("res/Exo2-Black.otf", 38, 512);
+
+        Text text;
+        text.scale = 0.9f;
+        text.str = "m2games";
+        text.color = {1.f, 1.f, 1.f, 0.7f};
+        const vec2 size = getTextSize(text, font_);
+        text.pos.x = (100.f - size.x) / 2.f;
+        text.pos.y = (100.f - size.y) / 2.f;
+
+        name_.numRects = writeTextToBuffer(text, font_, name_.rects, getSize(name_.rects));
+
+        for(int i = 0; i < name_.numRects; ++i)
+            name_.rects[i].pos.y -= name_.offset;
+    }
+
+    ~LogoScene() override
+    {
+        deleteGLBuffers(glBuffers_);
+        deleteTexture(texture_);
+        deleteFont(font_);
+    }
+    
+    void processInput(const Array<WinEvent>& events) override
+    {
+        for(const WinEvent& e: events)
+        {
+            if(e.type == WinEvent::Key && e.key.action == GLFW_PRESS)
+            {
+                int k = e.key.key;
+                if(k == GLFW_KEY_SPACE || k == GLFW_KEY_ESCAPE || k == GLFW_KEY_ENTER)
+                    time_ += 666.f;
+            }
+        }
+    }
+
+    void render(GLuint program) override
+    {
+        time_ += frame_.time;
+
+        if(time_ > name_.time + 1.f)
+        {
+            frame_.popMe = true;
+            frame_.newScene = new GameScene;
+        }
+
+        bindProgram(program);
+
+        // first render some text in the pixel coordinates
+        {
+            Rect rects[50];
+
+            Text text;
+            text.pos = {50.f, 50.f};
+            text.color = {1.f, 0.5f, 1.f, 1.f};
+            text.str = "press ENTER / ESC / SPACE to skip";
+
+            int count = writeTextToBuffer(text, font_, rects, getSize(rects));
+            fillGLRectBuffer(glBuffers_.rectBo, rects, count);
+
+            uniform2f(program, "cameraPos", 0.f, 0.f);
+            uniform2f(program, "cameraSize", frame_.fbSize);
+            uniform1i(program, "mode", FragmentMode::Font);
+
+            bindTexture(font_.texture);
+
+            renderGLBuffers(glBuffers_.vao, count);
+        }
+
+        // from here we will use the virtual world coordinates to render the scene
+        vec2 cameraPos = {0.f, 0.f};
+        vec2 cameraSize = {100.f, 100.f};
+
+        // adjust the camera to the aspect ratio
+        {
+            const vec2 prevSize = cameraSize;
+            const float viewportAspect = frame_.fbSize.x / frame_.fbSize.y;
+            const float cameraAspect = cameraSize.x / cameraSize.y;
+
+            if(viewportAspect > cameraAspect)
+            {
+                cameraSize.x = cameraSize.y * viewportAspect;
+            }
+            else if(viewportAspect < cameraAspect)
+            {
+                cameraSize.y = cameraSize.x / viewportAspect;
+            }
+
+            cameraPos.x -= (cameraSize.x - prevSize.x) / 2.f;
+            cameraPos.y -= (cameraSize.y - prevSize.y) / 2.f;
+        }
+
+        uniform2f(program, "cameraPos", cameraPos);
+        uniform2f(program, "cameraSize", cameraSize);
+
+        // rect
+        {
+            Rect rect;
+            rect.pos = {10.f, 50.f};
+            rect.size = {20.f, 20.f};
+            rect.color = {0.f, 1.f, 0.4f, 1.f};
+            rect.rotation = time_ / 2.f;
+            
+            fillGLRectBuffer(glBuffers_.rectBo, &rect, 1);
+            uniform1i(program, "mode", FragmentMode::Texture);
+            bindTexture(texture_);
+            renderGLBuffers(glBuffers_.vao, 1);
+        }
+
+        // animated studio name
+        {
+            if(name_.animationIdx < name_.numRects)
+            {
+                const float advanceTime = name_.time / name_.numRects;
+                const float speed = name_.offset / advanceTime;
+
+                name_.accumulator += frame_.time;
+                name_.rects[name_.animationIdx].pos.y += speed * frame_.time;
+                
+                if(name_.accumulator >= advanceTime)
+                {
+                    name_.accumulator -= advanceTime;
+                    name_.rects[name_.animationIdx].pos.y -= speed * name_.accumulator;
+                    name_.rects[name_.animationIdx].color.z = 0.f;
+
+                    ++name_.animationIdx;
+
+                    if(name_.animationIdx < name_.numRects)
+                        name_.rects[name_.animationIdx].pos.y += speed * name_.accumulator;
+                }
+            }
+
+            fillGLRectBuffer(glBuffers_.rectBo, name_.rects, name_.numRects);
+            uniform1i(program, "mode", FragmentMode::Font);
+            bindTexture(font_.texture);
+            renderGLBuffers(glBuffers_.vao, name_.numRects);
+        }
+    }
+
+private:
+    float time_ = 0.f;
+    GLBuffers glBuffers_;
+    Texture texture_;
+    Font font_;
+
+    struct
+    {
+        int animationIdx = 0;
+        float accumulator = 0.f;
+
+        Rect rects[10];
+        int numRects;
+        const float time = 1.5f;
+        const float offset = 40.f;
+    } name_;
+};
+
 int main()
 {
     glfwSetErrorCallback(errorCallback);
@@ -558,7 +792,8 @@ int main()
 
     GLFWmonitor* const monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-    GLFWwindow* const window = glfwCreateWindow(mode->width, mode->height, "cavetiles", monitor, nullptr);
+    GLFWwindow* const window = glfwCreateWindow(mode->width, mode->height, "cavetiles",
+                                                monitor, nullptr);
 
     if(!window)
     {
@@ -570,123 +805,101 @@ int main()
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glfwSwapInterval(1);
 
+    glfwSetKeyCallback(window, keyCallback);
+    glfwSetCursorPosCallback(window, cursorPosCallback);
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    glfwSetScrollCallback(window, scrollCallback);
+    glfwSetCharCallback(window, charCallback);
+
     ImGui::CreateContext();
-    ImGui_ImplGlfwGL3_Init(window, true);
+    ImGui_ImplGlfwGL3_Init(window, false);
     ImGui::StyleColorsDark();
 
     GLuint program = createProgram(vertexSrc, fragmentSrc);
 
-    GLBuffers glBuffers = createGLBuffers();
-
-    Rect rect;
-    rect.pos = {20.f, 20.f};
-    rect.size = {20.f, 20.f};
-    rect.color = {0.f, 1.f, 0.45f, 1.f};
-
-    Camera camera;
-    camera.pos = {0.f, 0.f};
-    camera.size = {100.f, 100.f};
-
-    Texture texture = createTextureFromFile("res/github.png");
-
-    Font font = createFontFromFile("res/Exo2-Black.otf", 30, 256);
-
-    Text text;
-    text.pos = {50.f, 50.f};
-    text.str = "This is a demo text.\nMultiline!";
-
-    Rect textRects[500];
-    int numTextRects = writeTextToBuffer(text, font, textRects, 500);
-    
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    Array<WinEvent> events;
+    events.reserve(50);
+    eventsPtr = &events;
+
+    Scene* scenes[10];
+    int numScenes = 1;
+    scenes[0] = new LogoScene;
+
     double time = glfwGetTime();
 
-    bool quit = false;
-    while(!quit)
+    // for now we will handle only the top scene
+    while(!glfwWindowShouldClose(window) && numScenes)
     {
         double newTime = glfwGetTime();
         const float dt = newTime - time;
         time = newTime;
 
+        events.clear();
         glfwPollEvents();
-        quit = glfwWindowShouldClose(window);
         ImGui_ImplGlfwGL3_NewFrame();
 
-        rect.rotation += dt;
+        const bool imguiWantMouse = ImGui::GetIO().WantCaptureMouse;
+        const bool imguiWantKeyboard = ImGui::GetIO().WantCaptureKeyboard;
 
-        int fbWidth, fbHeight;
-        glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+        for(WinEvent& e: events)
+        {
+            if(imguiWantMouse && ((e.type == WinEvent::MouseButton &&
+                                      e.mouseButton.action != GLFW_RELEASE) ||
+                                     e.type == WinEvent::Cursor ||
+                                     e.type == WinEvent::Scroll))
+                e.type = WinEvent::Nil;
 
-        glViewport(0, 0, fbWidth, fbHeight);
-        glClearColor(0.1f, 0.1f, 0.1f, 0.f);
+            if(imguiWantKeyboard && (e.type == WinEvent::Key))
+                e.type = WinEvent::Nil;
+        }
+
+        ivec2 fbSize;
+        glfwGetFramebufferSize(window, &fbSize.x, &fbSize.y);
+        glViewport(0, 0, fbSize.x, fbSize.y);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        // adjust the camera to the aspect ratio
-        const float viewportAspect = float(fbWidth) / fbHeight;
-        const float cameraAspect = camera.size.x / camera.size.y;
+        Scene& scene = *scenes[numScenes - 1];
+        scene.frame_.time = dt;
+        scene.frame_.fbSize.x = fbSize.x;
+        scene.frame_.fbSize.y = fbSize.y;
 
-        vec2 size = camera.size;
-        vec2 pos = camera.pos;
-
-        if(viewportAspect > cameraAspect)
-        {
-            size.x = size.y * viewportAspect;
-        }
-        else if(viewportAspect < cameraAspect)
-        {
-            size.y = size.x / viewportAspect;
-        }
-
-        pos.x -= (size.x - camera.size.x) / 2.f;
-        pos.y -= (size.y - camera.size.y) / 2.f;
-
-        bindProgram(program);
-
-        // rect
-        {
-            uniform1i(program, "mode", FragmentMode::Texture);
-            uniform2f(program, "cameraPos", pos);
-            uniform2f(program, "cameraSize", size);
-
-            bindTexture(texture);
-            fillGLRectBuffer(glBuffers.rectBo, &rect, 1);
-            glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 1);
-        }
-
-        // font
-        {
-            uniform1i(program, "mode", FragmentMode::Font);
-            uniform2f(program, "cameraPos", 0.f, 0.f);
-            uniform2f(program, "cameraSize", fbWidth, fbHeight);
-
-            fillGLRectBuffer(glBuffers.rectBo, textRects, numTextRects);
-            bindTexture(font.texture);
-            glDrawArraysInstanced(GL_TRIANGLES, 0, 6, numTextRects);
-        }
-
-        ImGui::Begin("options");
-        ImGui::Text("dear imgui test!");
-        if(ImGui::Button("quit"))
-            quit = true;
-        ImGui::End();
-
-        ImGui::ShowDemoWindow();
+        scene.processInput(events);
+        scene.update();
+        scene.render(program);
 
         ImGui::Render();
         ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
+
+        Scene* newScene = nullptr;
+        newScene = scene.frame_.newScene;
+        scene.frame_.newScene = nullptr;
+
+        if(scene.frame_.popMe)
+        {
+            delete &scene;
+            --numScenes;
+        }
+
+        if(newScene)
+        {
+            ++numScenes;
+            scenes[numScenes - 1] = newScene;
+        }
     }
 
+    for(int i = numScenes - 1; i >= 0; --i)
+    {
+        delete scenes[i];
+    }
+
+    deleteProgram(program);
     ImGui_ImplGlfwGL3_Shutdown();
     ImGui::DestroyContext();
-
-    deleteFont(font);
-    deleteTexture(texture);
-    deleteGLBuffers(glBuffers);
-    deleteProgram(program);
 
     glfwTerminate();
     return EXIT_SUCCESS;
