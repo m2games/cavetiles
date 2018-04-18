@@ -816,17 +816,19 @@ int main()
         return EXIT_FAILURE;
     }
 
-    // @TODO(matiTechno): error handling?
+    // @TODO(matiTechno): fmod error handling? (currently we only print them)
     FMOD_SYSTEM* fmodSystem;
     fmod( FMOD_System_Create(&fmodSystem) );
-    fmod( FMOD_System_Init(fmodSystem, 512, FMOD_INIT_NORMAL, 0) );
+    fmod( FMOD_System_Init(fmodSystem, 512, FMOD_INIT_NORMAL, nullptr) );
 
     FMOD_SOUND* sound;
+    FMOD_CHANNEL* channel;
 
-    fmod( FMOD_System_CreateSound(fmodSystem, "res/sfx_sound_vaporizing.wav", FMOD_CREATESAMPLE, nullptr,
-                                  &sound) ); // @free
+    fmod( FMOD_System_CreateSound(fmodSystem, "res/sfx_sound_vaporizing.wav",
+                                  FMOD_CREATESAMPLE, nullptr, &sound) );
 
-    fmod( FMOD_System_PlaySound(fmodSystem, sound, nullptr, false, nullptr) );
+    fmod( FMOD_System_PlaySound(fmodSystem, sound, nullptr, false, &channel) );
+    fmod( FMOD_Channel_SetVolume(channel, 0.1f) );
 
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
@@ -930,7 +932,7 @@ int main()
     ImGui_ImplGlfwGL3_Shutdown();
     ImGui::DestroyContext();
 
-    fmod( FMOD_System_Close(fmodSystem) );
+    fmod( FMOD_Sound_Release(sound) );
     fmod( FMOD_System_Release(fmodSystem) );
 
     glfwTerminate();
