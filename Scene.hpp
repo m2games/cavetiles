@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Array.hpp"
+#include "fmod/fmod.h"
 
 #undef max
 #define max(a,b) ((a) > (b) ? (a) : (b))
@@ -168,6 +169,14 @@ void deleteGLBuffers(GLBuffers& glBuffers);
 int writeTextToBuffer(const Text& text, const Font& font, Rect* buffer, int maxSize);
 // bbox
 vec2 getTextSize(const Text& text, const Font& font);
+
+bool fmodCheck(FMOD_RESULT r, const char* file, int line); // don't use this
+
+// wrap fmod calls in this
+// returns true if function succeeded
+#define FCHECK(x) fmodCheck(x, __FILE__, __LINE__)
+
+extern FMOD_SYSTEM* fmodSystem;
 
 class Scene
 {

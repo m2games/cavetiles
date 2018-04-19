@@ -8,7 +8,6 @@
 #include "Array.hpp"
 #include <cstring>
 #include "Scene.hpp"
-#include "fmod/fmod.h"
 #include "fmod/fmod_errors.h"
 
 // unity build
@@ -621,6 +620,13 @@ class LogoScene: public Scene
 public:
     LogoScene()
     {
+        FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_sound_vaporizing.wav",
+                                        FMOD_CREATESAMPLE, nullptr, &sound_) );
+        
+        FMOD_CHANNEL* channel;
+        FCHECK( FMOD_System_PlaySound(fmodSystem, sound_, nullptr, false, &channel) );
+        FCHECK( FMOD_Channel_SetVolume(channel, 0.1f) );
+
         glBuffers_ = createGLBuffers();
         texture_ = createTextureFromFile("res/github.png");
         font_ = createFontFromFile("res/Exo2-Black.otf", 38, 512);
@@ -644,6 +650,7 @@ public:
         deleteGLBuffers(glBuffers_);
         deleteTexture(texture_);
         deleteFont(font_);
+        FCHECK( FMOD_Sound_Release(sound_) );
     }
     
     void processInput(const Array<WinEvent>& events) override
@@ -767,6 +774,7 @@ private:
     GLBuffers glBuffers_;
     Texture texture_;
     Font font_;
+    FMOD_SOUND* sound_;
 
     struct
     {
@@ -780,7 +788,7 @@ private:
     } name_;
 };
 
-static bool fmodImpl(const FMOD_RESULT r, const char* const file, const int line)
+bool fmodCheck(const FMOD_RESULT r, const char* const file, const int line)
 {
     if(r != FMOD_OK)
     {
@@ -790,8 +798,7 @@ static bool fmodImpl(const FMOD_RESULT r, const char* const file, const int line
     return true;
 }
 
-// returns true if function succeeded
-#define fmod(x) fmodImpl(x, __FILE__, __LINE__)
+FMOD_SYSTEM* fmodSystem;
 
 int main()
 {
@@ -817,18 +824,8 @@ int main()
     }
 
     // @TODO(matiTechno): fmod error handling? (currently we only print them)
-    FMOD_SYSTEM* fmodSystem;
-    fmod( FMOD_System_Create(&fmodSystem) );
-    fmod( FMOD_System_Init(fmodSystem, 512, FMOD_INIT_NORMAL, nullptr) );
-
-    FMOD_SOUND* sound;
-    FMOD_CHANNEL* channel;
-
-    fmod( FMOD_System_CreateSound(fmodSystem, "res/sfx_sound_vaporizing.wav",
-                                  FMOD_CREATESAMPLE, nullptr, &sound) );
-
-    fmod( FMOD_System_PlaySound(fmodSystem, sound, nullptr, false, &channel) );
-    fmod( FMOD_Channel_SetVolume(channel, 0.1f) );
+    FCHECK( FMOD_System_Create(&fmodSystem) );
+    FCHECK( FMOD_System_Init(fmodSystem, 512, FMOD_INIT_NORMAL, nullptr) );
 
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
@@ -866,7 +863,7 @@ int main()
         const float dt = newTime - time;
         time = newTime;
 
-        fmod( FMOD_System_Update(fmodSystem) );
+        FCHECK( FMOD_System_Update(fmodSystem) );
 
         events.clear();
         glfwPollEvents();
@@ -932,8 +929,7 @@ int main()
     ImGui_ImplGlfwGL3_Shutdown();
     ImGui::DestroyContext();
 
-    fmod( FMOD_Sound_Release(sound) );
-    fmod( FMOD_System_Release(fmodSystem) );
+    FCHECK( FMOD_System_Release(fmodSystem) );
 
     glfwTerminate();
     return EXIT_SUCCESS;
