@@ -1,29 +1,37 @@
 #pragma once
 
+struct vec2
+{
+    float x;
+    float y;
+};
+
 class Sprite
 {
 public:
     Sprite();
-    Sprite(const char* const img_path);
-    Sprite(const char* const img_path, float xPos, float yPos);
-    Sprite(const char* const img_path, float xPos, float yPos, bool isMovable);
+    Sprite(const char* img_path, vec2 v, bool _isMovable);
 
-    void update();
     void render();
+    void move(vec2 v);
 
-    void move(float x, float y);
-    void destroy();                         // Probably those should be
-    void isCollision(Sprite sprite);        // virtual, eh?
-    void setPosition()
+    void destroy();
+    bool isCollision(Sprite sprite);
+    void setPosition(vec2 v);
+    void setScale(vec2 v);
 
 private:
-    float xPos;
-    float yPos;
+
+    vec2 position;
+    vec2 scale;
+    vec2 size;
     bool isMovable;
+    // Refers whether the object should exist or not.
     bool isAlive;
     //Texture texture;
 };
 
+// Player class extends Sprite class by adding the bombs.
 class Player: public Sprite
 {
 public:
@@ -31,4 +39,4 @@ public:
 
 private:
     int num_of_bombs;
-}
+};
