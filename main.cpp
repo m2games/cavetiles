@@ -678,7 +678,7 @@ public:
 
         bindProgram(program);
 
-        // first render some text in the pixel coordinates
+        // first render some text in the pixel / viewport coordinates
         {
             Rect rects[50];
 
@@ -700,30 +700,12 @@ public:
         }
 
         // from here we will use the virtual world coordinates to render the scene
-        vec2 cameraPos = {0.f, 0.f};
-        vec2 cameraSize = {100.f, 100.f};
-
-        // adjust the camera to the aspect ratio
-        {
-            const vec2 prevSize = cameraSize;
-            const float viewportAspect = frame_.fbSize.x / frame_.fbSize.y;
-            const float cameraAspect = cameraSize.x / cameraSize.y;
-
-            if(viewportAspect > cameraAspect)
-            {
-                cameraSize.x = cameraSize.y * viewportAspect;
-            }
-            else if(viewportAspect < cameraAspect)
-            {
-                cameraSize.y = cameraSize.x / viewportAspect;
-            }
-
-            cameraPos.x -= (cameraSize.x - prevSize.x) / 2.f;
-            cameraPos.y -= (cameraSize.y - prevSize.y) / 2.f;
-        }
-
-        uniform2f(program, "cameraPos", cameraPos);
-        uniform2f(program, "cameraSize", cameraSize);
+        Camera camera;
+        camera.pos = {0.f, 0.f};
+        camera.size = {100.f, 100.f};
+        camera = expandToMatchAspectRatio(camera, frame_.fbSize);
+        uniform2f(program, "cameraPos", camera.pos);
+        uniform2f(program, "cameraSize", camera.size);
 
         // rect
         {
@@ -799,6 +781,26 @@ bool fmodCheck(const FMOD_RESULT r, const char* const file, const int line)
 }
 
 FMOD_SYSTEM* fmodSystem;
+
+Camera expandToMatchAspectRatio(Camera camera, const vec2 viewportSize)
+{
+    const vec2 prevSize = camera.size;
+    const float viewportAspect = viewportSize.x / viewportSize.y;
+    const float cameraAspect = camera.size.x / camera.size.y;
+
+    if(viewportAspect > cameraAspect)
+    {
+        camera.size.x = camera.size.y * viewportAspect;
+    }
+    else if(viewportAspect < cameraAspect)
+    {
+        camera.size.y = camera.size.x / viewportAspect;
+    }
+
+    camera.pos.x -= (camera.size.x - prevSize.x) / 2.f;
+    camera.pos.y -= (camera.size.y - prevSize.y) / 2.f;
+    return camera;
+}
 
 int main()
 {

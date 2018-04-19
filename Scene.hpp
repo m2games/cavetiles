@@ -178,6 +178,14 @@ bool fmodCheck(FMOD_RESULT r, const char* file, int line); // don't use this
 
 extern FMOD_SYSTEM* fmodSystem;
 
+struct Camera
+{
+    vec2 pos;
+    vec2 size;
+};
+
+Camera expandToMatchAspectRatio(Camera camera, vec2 viewportSize);
+
 class Scene
 {
 public:
