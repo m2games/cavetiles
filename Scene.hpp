@@ -157,7 +157,7 @@ void deleteFont(Font& font);
 GLuint createProgram(const char* vertexSrc, const char* fragmentSrc);
 void deleteProgram(GLuint program);
 void bindProgram(const GLuint program);
- 
+
 // delete with deleteGLBuffers()
 GLBuffers createGLBuffers();
 void fillGLRectBuffer(GLuint rectBo, const Rect* rects, int count);
@@ -217,6 +217,7 @@ public:
     void render(GLuint program) override;
 
 private:
+    // Throws warning since it's not used right now.
     float time_ = 0.f;
     GLBuffers glBuffers;
 };

@@ -1,9 +1,54 @@
 #include "Scene.hpp"
 #include "imgui/imgui.h"
 
+Rect rects[100];
+// Initializing the map, with values indicating the type of a tile
+int tiles[10][10] = {
+    {1, 1, 2, 2, 3, 1, 3, 2, 1, 1},
+    {1, 1, 3, 1, 1, 2, 1, 2, 3, 3},
+    {1, 2, 3, 3, 3, 2, 3, 2, 3, 3},
+    {2, 1, 1, 2, 2, 2, 1, 1, 3, 2},
+    {3, 1, 3, 3, 2, 3, 2, 2, 2, 3},
+    {2, 2, 3, 3, 4, 2, 1, 3, 1, 2},
+    {3, 2, 2, 3, 1, 3, 3, 3, 1, 1},
+    {1, 2, 2, 3, 2, 3, 1, 2, 3, 3},
+    {3, 3, 2, 2, 1, 2, 2, 2, 1, 3},
+    {1, 2, 3, 3, 3, 2, 3, 3, 1, 1}
+};
+
 GameScene::GameScene()
 {
     glBuffers = createGLBuffers();
+
+    // Initializing rectangles which make the map.
+    for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 10; j++) {
+            Rect rect;
+            rect.pos = {j * 100.f, i * 100.f};
+            rect.size = {98.f, 98.f};
+
+            // Get the type and set the visuals of the
+            // tile from the tiles array.
+            int color_type = tiles[i][j];
+            switch (color_type) {
+                case 1:
+                    rect.color = {0.4f, 0.7f, 0.36f, 1.f};
+                    break;
+                case 2:
+                    rect.color = {0.62f, 0.62f, 0.62f, 1.f};
+                    break;
+                case 3:
+                    rect.color = {0.24f, 0.24f, 0.24f, 1.f};
+                    break;
+                case 4:
+                    rect.color = {0.86f, 0.84f, 0.14f, 1.f};
+                    break;
+            }
+            // Adding rectangle to the array, for later reference.
+            rects[j + i * 10] = rect;
+        }
+    }
+
 }
 
 GameScene::~GameScene()
@@ -17,21 +62,14 @@ void GameScene::update() {}
 
 void GameScene::render(const GLuint program)
 {
-    time_ += frame_.time;
 
-    Rect rect;
-    rect.pos = {50.f, 50.f};
-    rect.size = {300.f, 300.f};
-    rect.color = {1.f, 0.f, 0.f, 1.f};
-    rect.rotation = time_;
-
-    fillGLRectBuffer(glBuffers.rectBo, &rect, 1);
+    fillGLRectBuffer(glBuffers.rectBo, rects, 100);
 
     bindProgram(program);
     uniform1i(program, "mode", FragmentMode::Color);
     uniform2f(program, "cameraPos", 0.f, 0.f);
     uniform2f(program, "cameraSize", frame_.fbSize);
-    renderGLBuffers(glBuffers.vao, 1);
+    renderGLBuffers(glBuffers.vao, 100);
 
     ImGui::ShowDemoWindow();
 
