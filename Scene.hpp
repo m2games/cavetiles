@@ -208,6 +208,17 @@ public:
     } frame_;
 };
 
+struct Player
+{
+    vec2 pos;
+    vec2 size;
+    float vel = 200;
+    int dynNum = 3;
+    void move();
+    void dropDynamo();
+    vec4 color = {1.f, 0.f, 0.f, 1.f};
+};
+
 class GameScene: public Scene
 {
 public:
@@ -218,7 +229,32 @@ public:
     void render(GLuint program) override;
 
 private:
-    // Throws warning since it's not used right now.
-    float time_ = 0.f;
+
     GLBuffers glBuffers_;
+    Player player_;
+    Rect rects_[101];
+
+    // Initializing the map, with values indicating the type of a tile
+    int tiles_[10][10] =
+    {
+        {1, 1, 2, 2, 3, 1, 3, 2, 1, 1},
+        {1, 1, 3, 1, 1, 2, 1, 2, 3, 3},
+        {1, 2, 3, 3, 3, 2, 3, 2, 3, 3},
+        {2, 1, 1, 2, 2, 2, 1, 1, 3, 2},
+        {3, 1, 3, 3, 2, 3, 2, 2, 2, 3},
+        {2, 2, 3, 3, 4, 2, 1, 3, 1, 2},
+        {3, 2, 2, 3, 1, 3, 3, 3, 1, 1},
+        {1, 2, 2, 3, 2, 3, 1, 2, 3, 3},
+        {3, 3, 2, 2, 1, 2, 2, 2, 1, 3},
+        {1, 2, 3, 3, 3, 2, 3, 3, 1, 1}
+    };
+
+    struct
+    {
+        bool L;
+        bool R;
+        bool U;
+        bool D;
+    } move_;
+
 };

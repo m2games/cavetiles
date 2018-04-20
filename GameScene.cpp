@@ -1,31 +1,8 @@
 #include "Scene.hpp"
 #include "imgui/imgui.h"
 
-Rect rects[101];
-Rect player1;
-void outOfBound(Rect player);
-bool isCollision(Rect player, Rect object);
-
-// Initializing the map, with values indicating the type of a tile
-int tiles[10][10] =
-{
-    {1, 1, 2, 2, 3, 1, 3, 2, 1, 1},
-    {1, 1, 3, 1, 1, 2, 1, 2, 3, 3},
-    {1, 2, 3, 3, 3, 2, 3, 2, 3, 3},
-    {2, 1, 1, 2, 2, 2, 1, 1, 3, 2},
-    {3, 1, 3, 3, 2, 3, 2, 2, 2, 3},
-    {2, 2, 3, 3, 4, 2, 1, 3, 1, 2},
-    {3, 2, 2, 3, 1, 3, 3, 3, 1, 1},
-    {1, 2, 2, 3, 2, 3, 1, 2, 3, 3},
-    {3, 3, 2, 2, 1, 2, 2, 2, 1, 3},
-    {1, 2, 3, 3, 3, 2, 3, 3, 1, 1}
-};
-
-int rects_len;
-bool moveR;
-bool moveL;
-bool moveU;
-bool moveD;
+void outOfBound(Player& player);
+bool isCollision(Player& player, Rect object);
 
 GameScene::GameScene()
 {
@@ -42,7 +19,7 @@ GameScene::GameScene()
 
             // Get the type and set the visuals of the
             // tile from the tiles array.
-            int color_type = tiles[i][j];
+            int color_type = tiles_[i][j];
             switch (color_type)
             {
                 case 1:
@@ -61,16 +38,13 @@ GameScene::GameScene()
                     break;
             }
             // Adding rectangle to the array, for later reference.
-            rects[j + i * 10] = rect;
+            rects_[j + i * 10] = rect;
         }
     }
 
-    player1.pos = {15.f, 15.f};
-    player1.size = {70.f, 70.f};
-    player1.color = {1.f, 0.f, 0.f, 1.f};
-    rects[100] = player1;
-
-    rects_len = sizeof(rects) / sizeof(rects[0]);
+    player_.pos = {15.f, 15.f};
+    player_.size = {70.f, 70.f};
+    player_.color = {1.f, 0.f, 0.f, 1.f};
 }
 
 GameScene::~GameScene()
@@ -91,16 +65,16 @@ void GameScene::processInput(const Array<WinEvent>& events)
             switch (k)
             {
                 case GLFW_KEY_RIGHT:
-                    moveR = set;
+                    move_.R = set;
                     break;
                 case GLFW_KEY_LEFT:
-                    moveL = set;
+                    move_.L = set;
                     break;
                 case GLFW_KEY_DOWN:
-                    moveD = set;
+                    move_.D = set;
                     break;
                 case GLFW_KEY_UP:
-                    moveU = set;
+                    move_.U = set;
                     break;
                 default:
                     break;
@@ -112,30 +86,33 @@ void GameScene::processInput(const Array<WinEvent>& events)
 void GameScene::update()
 {
     // TODO Matbanero change it to the move() function.
-    if (moveR)
+    if (move_.R)
     {
-        player1.pos.x += 5;
+        player_.pos.x += player_.vel * frame_.time;
     }
-    if (moveL)
+    if (move_.L)
     {
-        player1.pos.x -= 5;
+        player_.pos.x -= 5;
     }
-    if (moveD)
+    if (move_.D)
     {
-        player1.pos.y += 5;
+        player_.pos.y += 5;
     }
-    if (moveU)
+    if (move_.U)
     {
-        player1.pos.y -= 5;
+        player_.pos.y -= 5;
     }
-    outOfBound(player1);
-    isCollision(player1, rects[25]);
+    outOfBound(player_);
+    isCollision(player_, rects_[25]);
 }
 
 void GameScene::render(const GLuint program)
 {
-
-    updateGLBuffers(glBuffers_, rects, rects_len);
+    Rect& rect = rects_[100];
+    rect.pos = player_.pos;
+    rect.size = player_.size;
+    rect.color = player_.color;
+    updateGLBuffers(glBuffers_, rects_, getSize(rects_));
     bindProgram(program);
 
     Camera camera;
@@ -146,7 +123,7 @@ void GameScene::render(const GLuint program)
     uniform1i(program, "mode", FragmentMode::Color);
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);
-    renderGLBuffers(glBuffers_, rects_len);
+    renderGLBuffers(glBuffers_, getSize(rects_));
 
     ImGui::ShowDemoWindow();
 
@@ -159,7 +136,7 @@ void GameScene::render(const GLuint program)
 
 //Checks if there is collision between player and the object.
 // TODO Matbanero - check only neighbour rectangles.
-bool isCollision(Rect player, Rect object)
+bool isCollision(Player& player, Rect object)
 {
     if (player.pos.x < object.pos.x + object.size.x
         && player.pos.x + player.size.x > object.pos.x
@@ -176,7 +153,7 @@ bool isCollision(Rect player, Rect object)
 
 // Checks if the player is out of bounds, if so it stops
 // from proceeding. Hardcoded for now.
-void outOfBound(Rect player)
+void outOfBound(Player& player)
 {
     if (player.pos.x < 0)
     {
@@ -192,5 +169,9 @@ void outOfBound(Rect player)
     {
         player.pos.y = 928;
     }
-    rects[100] = player;
+}
+
+void Player::move()
+{
+
 }
