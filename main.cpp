@@ -487,9 +487,9 @@ GLBuffers createGLBuffers()
     return glBuffers;
 }
 
-void fillGLRectBuffer(const GLuint rectBo, const Rect* const rects, const int count)
+void updateGLBuffers(GLBuffers& glBuffers, const Rect* const rects, const int count)
 {
-    glBindBuffer(GL_ARRAY_BUFFER, rectBo);
+    glBindBuffer(GL_ARRAY_BUFFER, glBuffers.rectBo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(Rect) * count, rects, GL_DYNAMIC_DRAW);
 }
 
@@ -500,9 +500,9 @@ void bindProgram(const GLuint program)
 }
 
 // call bindProgram() first
-void renderGLBuffers(const GLuint vao, const int numRects)
+void renderGLBuffers(GLBuffers& glBuffers, const int numRects)
 {
-    glBindVertexArray(vao);
+    glBindVertexArray(glBuffers.vao);
     glDrawArraysInstanced(GL_TRIANGLES, 0, 6, numRects);
 }
 
@@ -688,7 +688,7 @@ public:
             text.str = "press ENTER / ESC / SPACE to skip";
 
             int count = writeTextToBuffer(text, font_, rects, getSize(rects));
-            fillGLRectBuffer(glBuffers_.rectBo, rects, count);
+            updateGLBuffers(glBuffers_, rects, count);
 
             uniform2f(program, "cameraPos", 0.f, 0.f);
             uniform2f(program, "cameraSize", frame_.fbSize);
@@ -696,7 +696,7 @@ public:
 
             bindTexture(font_.texture);
 
-            renderGLBuffers(glBuffers_.vao, count);
+            renderGLBuffers(glBuffers_, count);
         }
 
         // from here we will use the virtual world coordinates to render the scene
@@ -715,10 +715,10 @@ public:
             rect.color = {0.f, 1.f, 0.4f, 1.f};
             rect.rotation = time_ / 2.f;
             
-            fillGLRectBuffer(glBuffers_.rectBo, &rect, 1);
+            updateGLBuffers(glBuffers_, &rect, 1);
             uniform1i(program, "mode", FragmentMode::Texture);
             bindTexture(texture_);
-            renderGLBuffers(glBuffers_.vao, 1);
+            renderGLBuffers(glBuffers_, 1);
         }
 
         // animated studio name
@@ -744,10 +744,10 @@ public:
                 }
             }
 
-            fillGLRectBuffer(glBuffers_.rectBo, name_.rects, name_.numRects);
+            updateGLBuffers(glBuffers_, name_.rects, name_.numRects);
             uniform1i(program, "mode", FragmentMode::Font);
             bindTexture(font_.texture);
-            renderGLBuffers(glBuffers_.vao, name_.numRects);
+            renderGLBuffers(glBuffers_, name_.numRects);
         }
     }
 
@@ -879,7 +879,8 @@ int main()
 
         if(plot.accumulator >= 0.033f)
         {
-            memmove(plot.frameTimes, plot.frameTimes + 1, sizeof(plot.frameTimes) -                                                                      sizeof(float));
+            memmove(plot.frameTimes, plot.frameTimes + 1, sizeof(plot.frameTimes) -
+                                                          sizeof(float));
 
             plot.frameTimes[getSize(plot.frameTimes) - 1] = plot.accumulator / plot.frameCount
                                                             * 1000.f;

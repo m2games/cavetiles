@@ -29,7 +29,7 @@ bool moveD;
 
 GameScene::GameScene()
 {
-    glBuffers = createGLBuffers();
+    glBuffers_ = createGLBuffers();
 
     // Initializing rectangles which make the map.
     for (int i = 0; i < 10; i++)
@@ -75,7 +75,7 @@ GameScene::GameScene()
 
 GameScene::~GameScene()
 {
-    deleteGLBuffers(glBuffers);
+    deleteGLBuffers(glBuffers_);
 }
 
 void GameScene::processInput(const Array<WinEvent>& events)
@@ -111,6 +111,7 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
 void GameScene::update()
 {
+<<<<<<< HEAD
     // TODO Matbanero change it to the move() function.
     if (moveR)
     {
@@ -134,6 +135,9 @@ void GameScene::update()
 
 void GameScene::render(const GLuint program)
 {
+=======
+    updateGLBuffers(glBuffers_, rects, 100);
+>>>>>>> 98382dd95ae5b861b1c8e97f71437d9ab81c9f21
 
     fillGLRectBuffer(glBuffers.rectBo, rects, rects_len);
     bindProgram(program);
@@ -146,7 +150,11 @@ void GameScene::render(const GLuint program)
     uniform1i(program, "mode", FragmentMode::Color);
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);
+<<<<<<< HEAD
     renderGLBuffers(glBuffers.vao, rects_len);
+=======
+    renderGLBuffers(glBuffers_, 100);
+>>>>>>> 98382dd95ae5b861b1c8e97f71437d9ab81c9f21
 
     ImGui::ShowDemoWindow();
 
