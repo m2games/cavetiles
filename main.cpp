@@ -918,8 +918,11 @@ int main()
         scene.frame_.fbSize.x = fbSize.x;
         scene.frame_.fbSize.y = fbSize.y;
         
-        ImGui::Begin("fps");
+        ImGui::Begin("cavetiles");
         {
+            if(ImGui::Button("quit"))
+                glfwSetWindowShouldClose(window, true);
+
             float max = 0.f;
             float sum = 0.f;
 
@@ -931,6 +934,7 @@ int main()
 
             const float avg = sum / getSize(plot.frameTimes);
 
+            ImGui::Spacing();
             ImGui::Text("frame time ms");
             ImGui::PushStyleColor(ImGuiCol_Text, {0.f, 0.85f, 0.f, 1.f});
             ImGui::Text("avg   %.3f (%d)", avg, int(1.f / avg * 1000.f + 0.5f));
