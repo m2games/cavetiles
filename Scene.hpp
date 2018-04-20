@@ -85,6 +85,7 @@ struct Text
     const char* str = "";
 };
 
+// @ better naming?
 struct GLBuffers
 {
     GLuint vao;
@@ -160,9 +161,9 @@ void bindProgram(const GLuint program);
 
 // delete with deleteGLBuffers()
 GLBuffers createGLBuffers();
-void fillGLRectBuffer(GLuint rectBo, const Rect* rects, int count);
+void updateGLBuffers(GLBuffers& glBuffers, const Rect* rects, int count);
 // call bindProgram() first
-void renderGLBuffers(GLuint vao, int numRects);
+void renderGLBuffers(GLBuffers& glBuffers, int numRects);
 void deleteGLBuffers(GLBuffers& glBuffers);
 
 // returns the number of rects written
@@ -219,5 +220,5 @@ public:
 private:
     // Throws warning since it's not used right now.
     float time_ = 0.f;
-    GLBuffers glBuffers;
+    GLBuffers glBuffers_;
 };

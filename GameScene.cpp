@@ -18,7 +18,7 @@ int tiles[10][10] = {
 
 GameScene::GameScene()
 {
-    glBuffers = createGLBuffers();
+    glBuffers_ = createGLBuffers();
 
     // Initializing rectangles which make the map.
     for (int i = 0; i < 10; i++) {
@@ -53,7 +53,7 @@ GameScene::GameScene()
 
 GameScene::~GameScene()
 {
-    deleteGLBuffers(glBuffers);
+    deleteGLBuffers(glBuffers_);
 }
 
 void GameScene::processInput(const Array<WinEvent>& events) {(void)events;}
@@ -62,8 +62,7 @@ void GameScene::update() {}
 
 void GameScene::render(const GLuint program)
 {
-
-    fillGLRectBuffer(glBuffers.rectBo, rects, 100);
+    updateGLBuffers(glBuffers_, rects, 100);
 
     bindProgram(program);
 
@@ -75,7 +74,7 @@ void GameScene::render(const GLuint program)
     uniform1i(program, "mode", FragmentMode::Color);
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);
-    renderGLBuffers(glBuffers.vao, 100);
+    renderGLBuffers(glBuffers_, 100);
 
     ImGui::ShowDemoWindow();
 
