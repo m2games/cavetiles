@@ -66,9 +66,15 @@ void GameScene::render(const GLuint program)
     fillGLRectBuffer(glBuffers.rectBo, rects, 100);
 
     bindProgram(program);
+
+    Camera camera;
+    camera.pos = {0.f, 0.f};
+    camera.size = {10 * 100.f, 10 * 100.f};
+    camera = expandToMatchAspectRatio(camera, frame_.fbSize);
+
     uniform1i(program, "mode", FragmentMode::Color);
-    uniform2f(program, "cameraPos", 0.f, 0.f);
-    uniform2f(program, "cameraSize", frame_.fbSize);
+    uniform2f(program, "cameraPos", camera.pos);
+    uniform2f(program, "cameraSize", camera.size);
     renderGLBuffers(glBuffers.vao, 100);
 
     ImGui::ShowDemoWindow();
