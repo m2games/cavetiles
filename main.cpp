@@ -6,7 +6,7 @@
 #include "imgui/imgui.h"
 //#include "imgui/imgui_impl_glfw_gl3.h"
 #include "Array.hpp"
-#include <cstring>
+#include <string.h>
 #include "Scene.hpp"
 #include "fmod/fmod_errors.h"
 
@@ -814,10 +814,12 @@ int main()
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWmonitor* const monitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-    GLFWwindow* const window = glfwCreateWindow(mode->width, mode->height, "cavetiles",
-                                                monitor, nullptr);
+    GLFWwindow* window;
+    {
+        GLFWmonitor* const monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        window = glfwCreateWindow(mode->width, mode->height, "cavetiles", monitor, nullptr);
+    }
 
     if(!window)
     {
@@ -856,6 +858,13 @@ int main()
     int numScenes = 1;
     scenes[0] = new LogoScene;
 
+    struct
+    {
+        float accumulator = 0.f;
+        int frameCount = 0;
+        float frameTimes[180] = {}; // ms
+    } plot;
+
     double time = glfwGetTime();
 
     // for now we will handle only the top scene
@@ -864,6 +873,19 @@ int main()
         double newTime = glfwGetTime();
         const float dt = newTime - time;
         time = newTime;
+
+        plot.accumulator += dt;
+        ++plot.frameCount;
+
+        if(plot.accumulator >= 0.033f)
+        {
+            memmove(plot.frameTimes, plot.frameTimes + 1, sizeof(plot.frameTimes) -                                                                      sizeof(float));
+
+            plot.frameTimes[getSize(plot.frameTimes) - 1] = plot.accumulator / plot.frameCount
+                                                            * 1000.f;
+            plot.accumulator = 0.f;
+            plot.frameCount = 0;
+        }
 
         FCHECK( FMOD_System_Update(fmodSystem) );
 
@@ -895,6 +917,43 @@ int main()
         scene.frame_.time = dt;
         scene.frame_.fbSize.x = fbSize.x;
         scene.frame_.fbSize.y = fbSize.y;
+        
+        ImGui::Begin("fps");
+        {
+            float max = 0.f;
+            float sum = 0.f;
+
+            for(const float t: plot.frameTimes)
+            {
+                sum += t;
+                max = max(max, t);
+            }
+
+            const float avg = sum / getSize(plot.frameTimes);
+
+            ImGui::Text("frame time ms");
+            ImGui::PushStyleColor(ImGuiCol_Text, {0.f, 0.85f, 0.f, 1.f});
+            ImGui::Text("avg   %.3f (%d)", avg, int(1.f / avg * 1000.f + 0.5f));
+            ImGui::PushStyleColor(ImGuiCol_Text, {0.9f, 0.f, 0.f, 1.f});
+            ImGui::Text("max   %.3f", max);
+            ImGui::PopStyleColor(2);
+            ImGui::Spacing();
+            ImGui::PlotLines("", plot.frameTimes, getSize(plot.frameTimes), 0, nullptr, 0.f,
+                             20.f, {0, 60});
+
+            ImGui::Spacing();
+            ImGui::Text("vsync");
+            ImGui::SameLine();
+            if(ImGui::Button("on "))
+                glfwSwapInterval(1);
+            
+            ImGui::SameLine();
+
+            if(ImGui::Button("off"))
+                glfwSwapInterval(0);
+
+        }
+        ImGui::End();
 
         scene.processInput(events);
         scene.update();

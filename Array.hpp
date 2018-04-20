@@ -89,7 +89,7 @@ private:
 
     void grow()
     {
-        data_ = (T*)realloc(data_, capacity_);
+        data_ = (T*)realloc(data_, capacity_ * sizeof(T));
         assert(data_);
     }
 };
