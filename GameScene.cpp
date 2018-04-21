@@ -124,62 +124,29 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
 void GameScene::update()
 {
-    // Messy implementation of collision detection with neighbouring
-    // objects TODO Matbanero improve it hardly.
-    Rect rect;
-    rect.pos = player_.pos;
-    int playerIndex = getRectIndex(rect);
-
+    // TODO Matbanero change it to the move() function.
     if (move_.R)
     {
         player_.pos.x += player_.vel * frame_.time;
         player_.anims.right.update(frame_.time);
-
-        if (isCollision(player_, rects_[playerIndex + 1]) &&
-            getTile(rects_[playerIndex + 1]) != 1)
-        {
-            player_.pos.x = rects_[playerIndex + 1].pos.x - player_.size.x;
-        }
     }
     else if (move_.L)
     {
         player_.pos.x -= player_.vel * frame_.time;
         player_.anims.left.update(frame_.time);
-
-        // TODO inspect the problem with left direction Collision
-        if (isCollision(player_, rects_[playerIndex - 1]) &&
-            getTile(rects_[playerIndex - 1]) != 1)
-        {
-            player_.pos.x = rects_[playerIndex - 1].pos.x +
-                rects_[playerIndex - 1].size.x + 1;
-        }
     }
     else if (move_.D)
     {
         player_.pos.y += player_.vel * frame_.time;
         player_.anims.down.update(frame_.time);
-
-        if (isCollision(player_, rects_[playerIndex + 10]) &&
-            getTile(rects_[playerIndex + 10]) != 1)
-        {
-            player_.pos.y = rects_[playerIndex + 10].pos.y - player_.size.y;
-        }
     }
     else if (move_.U)
     {
         player_.pos.y -= player_.vel * frame_.time;
         player_.anims.up.update(frame_.time);
-
-        if (isCollision(player_, rects_[playerIndex - 10]) &&
-            getTile(rects_[playerIndex - 10]) != 1)
-        {
-            player_.pos.y = rects_[playerIndex - 10].pos.y +
-                rects_[playerIndex - 10].size.y;
-        }
     }
-
     outOfBound(player_);
-
+    isCollision(player_, rects_[25]);
 }
 
 void GameScene::render(const GLuint program)
@@ -217,7 +184,7 @@ void GameScene::render(const GLuint program)
         rect.texRect.y = frame.y / player_.texture.size.y;
         rect.texRect.z = frame.z / player_.texture.size.x;
         rect.texRect.w = frame.w / player_.texture.size.y;
-
+        
         updateGLBuffers(glBuffers_, &rect, 1);
     }
 
@@ -235,6 +202,7 @@ void GameScene::render(const GLuint program)
 }
 
 //Checks if there is collision between player and the object.
+// TODO Matbanero - check only neighbour rectangles.
 bool isCollision(Player& player, Rect object)
 {
     return player.pos.x < object.pos.x + object.size.x &&
@@ -263,16 +231,7 @@ void outOfBound(Player& player)
     }
 }
 
-// Returns the index of the rect from rects_
-int GameScene::getRectIndex(Rect rect)
+void Player::move()
 {
-    return rect.pos.x / 100 + rect.pos.y / 10;
-}
 
-// Returns the value of a tile
-int GameScene::getTile(Rect rect)
-{
-    int j = rect.pos.x / 100;
-    int i = rect.pos.y / 100;
-    return tiles_[i][j];
 }
