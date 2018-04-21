@@ -43,12 +43,55 @@ GameScene::GameScene()
     }
 
     player_.pos = {15.f, 15.f};
-    player_.size = {70.f, 70.f};
+    player_.size = {100.f, 100.f};
     player_.color = {1.f, 0.f, 0.f, 1.f};
+    player_.texture = createTextureFromFile("res/goblin.png");
+
+    {
+        Anim& anim = player_.anims.right;
+        anim.frameDt = 0.08f;
+        anim.numFrames = 4;
+
+        for(int i = 0; i < anim.numFrames; ++i)
+        {
+            anim.frames[i] = {0.f + i * 64.f, 64.f, 64.f, 64.f};
+        }
+    }
+    {
+        Anim& anim = player_.anims.left;
+        anim.frameDt = 0.08f;
+        anim.numFrames = 4;
+
+        for(int i = 0; i < anim.numFrames; ++i)
+        {
+            anim.frames[i] = {0.f + i * 64.f, 3 *64.f, 64.f, 64.f};
+        }
+    }
+    {
+        Anim& anim = player_.anims.up;
+        anim.frameDt = 0.08f;
+        anim.numFrames = 4;
+
+        for(int i = 0; i < anim.numFrames; ++i)
+        {
+            anim.frames[i] = {0.f + i * 64.f, 2 * 64.f, 64.f, 64.f};
+        }
+    }
+    {
+        Anim& anim = player_.anims.down;
+        anim.frameDt = 0.08f;
+        anim.numFrames = 4;
+
+        for(int i = 0; i < anim.numFrames; ++i)
+        {
+            anim.frames[i] = {0.f + i * 64.f, 0.f, 64.f, 64.f};
+        }
+    }
 }
 
 GameScene::~GameScene()
 {
+    deleteTexture(player_.texture);
     deleteGLBuffers(glBuffers_);
 }
 
@@ -85,18 +128,22 @@ void GameScene::update()
     if (move_.R)
     {
         player_.pos.x += player_.vel * frame_.time;
+        player_.anims.right.update(frame_.time);
     }
-    if (move_.L)
+    else if (move_.L)
     {
         player_.pos.x -= player_.vel * frame_.time;
+        player_.anims.left.update(frame_.time);
     }
-    if (move_.D)
+    else if (move_.D)
     {
         player_.pos.y += player_.vel * frame_.time;
+        player_.anims.down.update(frame_.time);
     }
-    if (move_.U)
+    else if (move_.U)
     {
         player_.pos.y -= player_.vel * frame_.time;
+        player_.anims.up.update(frame_.time);
     }
     outOfBound(player_);
     isCollision(player_, rects_[25]);
@@ -104,11 +151,7 @@ void GameScene::update()
 
 void GameScene::render(const GLuint program)
 {
-    Rect& rect = rects_[100];
-    rect.pos = player_.pos;
-    rect.size = player_.size;
-    rect.color = player_.color;
-    updateGLBuffers(glBuffers_, rects_, getSize(rects_));
+    updateGLBuffers(glBuffers_, rects_, getSize(rects_) - 1);
     bindProgram(program);
 
     Camera camera;
@@ -116,10 +159,38 @@ void GameScene::render(const GLuint program)
     camera.size = {10 * 100.f, 10 * 100.f};
     camera = expandToMatchAspectRatio(camera, frame_.fbSize);
 
+    // render the tiles
     uniform1i(program, "mode", FragmentMode::Color);
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);
-    renderGLBuffers(glBuffers_, getSize(rects_));
+    renderGLBuffers(glBuffers_, getSize(rects_) - 1);
+
+    // render the player
+
+    {
+        Rect rect;
+        rect.pos = player_.pos;
+        rect.size = player_.size;
+        //rect.color = player_.color;
+        rect.color = {1.f, 1.f, 1.f, 1.f};
+        static vec4 frame = player_.anims.down.getCurrentFrame();
+
+        if(move_.R) frame = player_.anims.right.getCurrentFrame();
+        if(move_.U) frame = player_.anims.up.getCurrentFrame();
+        if(move_.D) frame = player_.anims.down.getCurrentFrame();
+        if(move_.L) frame = player_.anims.left.getCurrentFrame();
+
+        rect.texRect.x = frame.x / player_.texture.size.x;
+        rect.texRect.y = frame.y / player_.texture.size.y;
+        rect.texRect.z = frame.z / player_.texture.size.x;
+        rect.texRect.w = frame.w / player_.texture.size.y;
+        
+        updateGLBuffers(glBuffers_, &rect, 1);
+    }
+
+    uniform1i(program, "mode", FragmentMode::Texture);
+    bindTexture(player_.texture);
+    renderGLBuffers(glBuffers_, 1);
 
     ImGui::ShowDemoWindow();
 

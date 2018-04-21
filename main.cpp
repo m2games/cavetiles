@@ -7,6 +7,7 @@
 //#include "imgui/imgui_impl_glfw_gl3.h"
 #include "Array.hpp"
 #include <string.h>
+#include <assert.h>
 #include "Scene.hpp"
 #include "fmod/fmod_errors.h"
 
@@ -982,6 +983,7 @@ int main()
         if(newScene)
         {
             ++numScenes;
+            assert(numScenes < getSize(scenes));
             scenes[numScenes - 1] = newScene;
         }
     }

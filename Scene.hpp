@@ -208,15 +208,49 @@ public:
     } frame_;
 };
 
+struct Anim
+{
+    float frameDt;
+    int numFrames;
+    vec4 frames[12];
+
+    float accumulator = 0.f;
+    int idx = 0;
+
+    vec4 getCurrentFrame() {return frames[idx];}
+
+    void update(float dt)
+    {
+        accumulator += dt;
+        if(accumulator >= frameDt)
+        {
+            accumulator -= frameDt;
+            ++idx;
+            if(idx > numFrames - 1)
+                idx = 0;
+        }
+    }
+};
+
 struct Player
 {
     vec2 pos;
     vec2 size;
-    float vel = 500;
+    float vel = 150.f;
     int dynNum = 3;
     void move();
     void dropDynamo();
     vec4 color = {1.f, 0.f, 0.f, 1.f};
+
+    struct
+    {
+        Anim up;
+        Anim down;
+        Anim left;
+        Anim right;
+    } anims;
+
+    Texture texture;
 };
 
 class GameScene: public Scene
@@ -229,24 +263,23 @@ public:
     void render(GLuint program) override;
 
 private:
-
     GLBuffers glBuffers_;
     Player player_;
-    Rect rects_[101];
+    Rect rects_[100];
 
     // Initializing the map, with values indicating the type of a tile
     int tiles_[10][10] =
     {
-        {1, 1, 2, 2, 3, 1, 3, 2, 1, 1},
-        {1, 1, 3, 1, 1, 2, 1, 2, 3, 3},
-        {1, 2, 3, 3, 3, 2, 3, 2, 3, 3},
-        {2, 1, 1, 2, 2, 2, 1, 1, 3, 2},
-        {3, 1, 3, 3, 2, 3, 2, 2, 2, 3},
-        {2, 2, 3, 3, 4, 2, 1, 3, 1, 2},
-        {3, 2, 2, 3, 1, 3, 3, 3, 1, 1},
-        {1, 2, 2, 3, 2, 3, 1, 2, 3, 3},
-        {3, 3, 2, 2, 1, 2, 2, 2, 1, 3},
-        {1, 2, 3, 3, 3, 2, 3, 3, 1, 1}
+        1, 1, 2, 2, 3, 1, 3, 2, 1, 1,
+        1, 1, 3, 1, 1, 2, 1, 2, 3, 3,
+        1, 2, 3, 3, 3, 2, 3, 2, 3, 3,
+        2, 1, 1, 2, 2, 2, 1, 1, 3, 2,
+        3, 1, 3, 3, 2, 3, 2, 2, 2, 3,
+        2, 2, 3, 3, 4, 2, 1, 3, 1, 2,
+        3, 2, 2, 3, 1, 3, 3, 3, 1, 1,
+        1, 2, 2, 3, 2, 3, 1, 2, 3, 3,
+        3, 3, 2, 2, 1, 2, 2, 2, 1, 3,
+        1, 2, 3, 3, 3, 2, 3, 3, 1, 1
     };
 
     struct
@@ -256,5 +289,4 @@ private:
         bool U = false;
         bool D = false;
     } move_;
-
 };
