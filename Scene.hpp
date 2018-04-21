@@ -266,7 +266,8 @@ private:
     GLBuffers glBuffers_;
     Player player_;
     Rect rects_[100];
-
+    int getTile(Rect rect);
+    int getRectIndex(Rect rect);
     // Initializing the map, with values indicating the type of a tile
     int tiles_[10][10] =
     {
