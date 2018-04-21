@@ -44,20 +44,10 @@ GameScene::GameScene()
 
             switch (tiles_[i][j])
             {
-                case 1:
-                    rect.color = {0.4f, 0.7f, 0.36f, 1.f};
-                    break;
-                case 2:
-                    rect.color = {0.3f, 0.f, 0.1f, 1.f};
-                    break;
-                case 3:
-                    rect.color = {0.24f, 0.24f, 0.24f, 1.f};
-                    break;
-                case 4:
-                    rect.color = {0.86f, 0.84f, 0.14f, 1.f};
-                    break;
-                default:
-                    break;
+                case 1: rect.color = {0.4f, 0.7f, 0.36f, 1.f};   break;
+                case 2: rect.color = {0.3f, 0.f, 0.1f, 1.f};     break;
+                case 3: rect.color = {0.24f, 0.24f, 0.24f, 1.f}; break;
+                case 4: rect.color = {0.86f, 0.84f, 0.14f, 1.f};
             }
         }
     }
@@ -72,10 +62,10 @@ GameScene::GameScene()
         int y;
         switch(i)
         {
-            case Dir::Up: y = 2; break;
-            case Dir::Down: y = 0; break;
-            case Dir::Left: y = 3; break;
-            case Dir::Right: y = 1; break;
+            case Dir::Up:    y = 2; break;
+            case Dir::Down:  y = 0; break;
+            case Dir::Left:  y = 3; break;
+            case Dir::Right: y = 1;
         }
 
         for(int i = 0; i < anim.numFrames; ++i)
@@ -105,10 +95,10 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
             switch(e.key.key)
             {
-                case GLFW_KEY_UP: keys_.up = on; break;;
-                case GLFW_KEY_DOWN: keys_.down = on; break;;
-                case GLFW_KEY_LEFT: keys_.left = on; break;;
-                case GLFW_KEY_RIGHT: keys_.right = on; break;;
+                case GLFW_KEY_UP:    keys_.up = on;   break;
+                case GLFW_KEY_DOWN:  keys_.down = on; break;
+                case GLFW_KEY_LEFT:  keys_.left = on; break;
+                case GLFW_KEY_RIGHT: keys_.right = on;
             }
         }
     }
