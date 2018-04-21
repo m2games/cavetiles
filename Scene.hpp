@@ -213,44 +213,33 @@ struct Anim
     float frameDt;
     int numFrames;
     vec4 frames[12];
-
     float accumulator = 0.f;
     int idx = 0;
 
     vec4 getCurrentFrame() {return frames[idx];}
+    void update(float dt);
+};
 
-    void update(float dt)
+struct Dir
+{
+    enum
     {
-        accumulator += dt;
-        if(accumulator >= frameDt)
-        {
-            accumulator -= frameDt;
-            ++idx;
-            if(idx > numFrames - 1)
-                idx = 0;
-        }
-    }
+        Nil,
+        Up,
+        Down,
+        Left,
+        Right,
+        Count
+    };
 };
 
 struct Player
 {
     vec2 pos;
-    vec2 size;
-    float vel = 150.f;
-    int dynNum = 3;
-    void move();
-    void dropDynamo();
-    vec4 color = {1.f, 0.f, 0.f, 1.f};
-
-    struct
-    {
-        Anim up;
-        Anim down;
-        Anim left;
-        Anim right;
-    } anims;
-
+    float vel;
+    int dir = Dir::Nil;
     Texture texture;
+    Anim anims[Dir::Count];
 };
 
 class GameScene: public Scene
@@ -266,27 +255,28 @@ private:
     GLBuffers glBuffers_;
     Player player_;
     Rect rects_[100];
-
-    // Initializing the map, with values indicating the type of a tile
-    int tiles_[10][10] =
-    {
-        1, 1, 2, 2, 3, 1, 3, 2, 1, 1,
-        1, 1, 3, 1, 1, 2, 1, 2, 3, 3,
-        1, 2, 3, 3, 3, 2, 3, 2, 3, 3,
-        2, 1, 1, 2, 2, 2, 1, 1, 3, 2,
-        3, 1, 3, 3, 2, 3, 2, 2, 2, 3,
-        2, 2, 3, 3, 4, 2, 1, 3, 1, 2,
-        3, 2, 2, 3, 1, 3, 3, 3, 1, 1,
-        1, 2, 2, 3, 2, 3, 1, 2, 3, 3,
-        3, 3, 2, 2, 1, 2, 2, 2, 1, 3,
-        1, 2, 3, 3, 3, 2, 3, 3, 1, 1
-    };
+    vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
+    const float tileSize_ = 20.f;
 
     struct
     {
-        bool L = false;
-        bool R = false;
-        bool U = false;
-        bool D = false;
-    } move_;
+        bool up = false;
+        bool down = false;
+        bool left = false;
+        bool right = false;
+    } keys_;
+
+    int tiles_[10][10] =
+    {
+        {3, 3, 3, 3, 3, 3, 3, 3, 3, 3},
+        {3, 1, 1, 1, 1, 1, 1, 1, 3, 3},
+        {3, 1, 3, 1, 3, 1, 3, 3, 1, 3},
+        {3, 1, 3, 1, 1, 1, 1, 3, 1, 3},
+        {3, 1, 1, 1, 3, 3, 1, 3, 1, 3},
+        {3, 1, 3, 1, 1, 1, 1, 3, 1, 3},
+        {3, 1, 1, 1, 3, 1, 3, 1, 1, 3},
+        {3, 1, 3, 1, 3, 1, 3, 1, 3, 3},
+        {3, 1, 1, 1, 1, 1, 1, 1, 1, 3},
+        {3, 3, 3, 3, 3, 3, 3, 3, 3, 3}
+    };
 };
