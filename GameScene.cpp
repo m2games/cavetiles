@@ -56,13 +56,11 @@ void GameScene::processInput(const Array<WinEvent>& events)
 {
     for (const WinEvent& e: events)
     {
-        bool set = (e.key.action != GLFW_RELEASE);
-        if (e.type == WinEvent::Key)
+        if(e.type == WinEvent::Key)
         {
-            int k = e.key.key;
-            set = (e.key.action != GLFW_RELEASE);
+            bool set = (e.key.action != GLFW_RELEASE);
 
-            switch (k)
+            switch(e.key.key)
             {
                 case GLFW_KEY_RIGHT:
                     move_.R = set;
@@ -75,8 +73,6 @@ void GameScene::processInput(const Array<WinEvent>& events)
                     break;
                 case GLFW_KEY_UP:
                     move_.U = set;
-                    break;
-                default:
                     break;
             }
         }
@@ -92,15 +88,15 @@ void GameScene::update()
     }
     if (move_.L)
     {
-        player_.pos.x -= 5;
+        player_.pos.x -= player_.vel * frame_.time;
     }
     if (move_.D)
     {
-        player_.pos.y += 5;
+        player_.pos.y += player_.vel * frame_.time;
     }
     if (move_.U)
     {
-        player_.pos.y -= 5;
+        player_.pos.y -= player_.vel * frame_.time;
     }
     outOfBound(player_);
     isCollision(player_, rects_[25]);
@@ -138,17 +134,10 @@ void GameScene::render(const GLuint program)
 // TODO Matbanero - check only neighbour rectangles.
 bool isCollision(Player& player, Rect object)
 {
-    if (player.pos.x < object.pos.x + object.size.x
-        && player.pos.x + player.size.x > object.pos.x
-            && player.pos.y + player.size.y > object.pos.y
-                && player.pos.y < object.pos.y + object.size.y)
-    {
-        return true;
-    } else
-    {
-        return false;
-    }
-
+    return player.pos.x < object.pos.x + object.size.x &&
+           player.pos.x + player.size.x > object.pos.x &&
+           player.pos.y + player.size.y > object.pos.y &&
+           player.pos.y < object.pos.y + object.size.y;
 }
 
 // Checks if the player is out of bounds, if so it stops

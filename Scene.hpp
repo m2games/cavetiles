@@ -212,7 +212,7 @@ struct Player
 {
     vec2 pos;
     vec2 size;
-    float vel = 200;
+    float vel = 500;
     int dynNum = 3;
     void move();
     void dropDynamo();
@@ -251,10 +251,10 @@ private:
 
     struct
     {
-        bool L;
-        bool R;
-        bool U;
-        bool D;
+        bool L = false;
+        bool R = false;
+        bool U = false;
+        bool D = false;
     } move_;
 
 };
