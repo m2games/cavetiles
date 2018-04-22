@@ -328,32 +328,13 @@ void GameScene::render(const GLuint program)
     updateGLBuffers(glBuffers_, rects_, getSize(rects_));
     renderGLBuffers(glBuffers_, getSize(rects_));
 
-    // 2) render the player tile
-    {
-        Rect rect;
-        rect.color = {1.f, 0.f, 0.f, 0.22f};
-        rect.size = {tileSize_, tileSize_};
-
-        uniform1i(program, "mode", FragmentMode::Color);
-
-        for(const Player& player: players_)
-        {
-            const ivec2 tile = getPlayerTile(player.pos, tileSize_);
-            rect.pos.x = tile.x * tileSize_;
-            rect.pos.y = tile.y * tileSize_;
-
-            updateGLBuffers(glBuffers_, &rect, 1);
-            renderGLBuffers(glBuffers_, 1);
-        }
-    }
-
-    // 3) render the players
-
+    // 2) render the players
+    
     for(Player& player: players_)
     {
         Rect rect;
-        rect.pos = player.pos;
         rect.size = {tileSize_, tileSize_};
+        rect.pos = player.pos;
 
         const vec4 frame = player.dir ? player.anims[player.dir].getCurrentFrame() :
                                         player.anims[player.prevDir].getCurrentFrame();
@@ -363,19 +344,13 @@ void GameScene::render(const GLuint program)
         rect.texRect.z = frame.z / player.texture->size.x;
         rect.texRect.w = frame.w / player.texture->size.y;
 
-        rect.color = {1.f, 0.f, 0.5f, 0.15f};
-        uniform1i(program, "mode", FragmentMode::Color);
-        updateGLBuffers(glBuffers_, &rect, 1);
-        renderGLBuffers(glBuffers_, 1);
-
-        rect.color = {1.f, 1.f, 1.f, 1.f};
         uniform1i(program, "mode", FragmentMode::Texture);
         bindTexture(*player.texture);
         updateGLBuffers(glBuffers_, &rect, 1);
         renderGLBuffers(glBuffers_, 1);
     }
 
-    // 4) particles
+    // 3) particles
 
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     uniform1i(program, "mode", FragmentMode::Color);
@@ -383,7 +358,7 @@ void GameScene::render(const GLuint program)
     renderGLBuffers(glBuffers_, emitter_.numActive);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // 5) imgui
+    // 4) imgui
 
     ImGui::ShowDemoWindow();
     ImGui::Begin("options");
