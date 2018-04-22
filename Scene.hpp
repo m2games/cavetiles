@@ -268,7 +268,7 @@ struct Anim
     float accumulator = 0.f;
     int idx = 0;
 
-    vec4 getCurrentFrame() {return frames[idx];}
+    vec4 getCurrentFrame() const {return frames[idx];}
     void update(float dt);
 };
 
@@ -290,8 +290,10 @@ struct Player
     vec2 pos;
     float vel;
     int dir = Dir::Nil;
-    Texture texture;
+    Texture* texture;
     Anim anims[Dir::Count];
+    // for animation only
+    int prevDir;
 };
 
 class GameScene: public Scene
@@ -305,12 +307,13 @@ public:
 
 private:
     GLBuffers glBuffers_;
-    Player player_;
+    Player players_[2];
     Rect rects_[100];
     vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     const float tileSize_ = 20.f;
     Emitter emitter_;
     Texture tileTexture_;
+    Texture goblinTexture_;
 
     struct
     {
@@ -318,7 +321,7 @@ private:
         bool down = false;
         bool left = false;
         bool right = false;
-    } keys_;
+    } keys_[2];
 
     int tiles_[10][10] =
     {

@@ -114,6 +114,16 @@ GameScene::GameScene()
 {
     glBuffers_ = createGLBuffers();
     tileTexture_ = createTextureFromFile("res/tiles.png");
+    goblinTexture_ = createTextureFromFile("res/goblin.png");
+
+    emitter_.spawn.pos = {tileSize_ * 11, tileSize_ * 8};
+    emitter_.spawn.size = {5.f, 5.f};
+    emitter_.spawn.hz = 100.f;
+    emitter_.particleRanges.life = {3.f, 6.f};
+    emitter_.particleRanges.size = {0.25f, 2.f};
+    emitter_.particleRanges.vel = {{-3.5f, -30.f}, {3.5f, -2.f}};
+    emitter_.particleRanges.color = {{0.1f, 0.f, 0.f, 0.f}, {0.5f, 0.25f, 0.f, 0.f}};
+    emitter_.reserve();
 
     for (int i = 0; i < 10; i++)
     {
@@ -138,9 +148,16 @@ GameScene::GameScene()
         }
     }
 
+    for(Player& player: players_)
+    {
+        player.vel = 80.f;
+    }
+
+    // specific configuration for each player
+
     for(int i = Dir::Up; i < Dir::Count; ++i)
     {
-        Anim& anim = player_.anims[i];
+        Anim anim;
         anim.frameDt = 0.07f;
         anim.numFrames = 4;
 
@@ -158,25 +175,29 @@ GameScene::GameScene()
         {
             anim.frames[i] = {0.f + 64.f * i, 64.f * y, 64.f, 64.f};
         }
+
+        for(Player& player: players_)
+        {
+            player.anims[i] = anim;
+        }
     }
 
-    player_.pos = {tileSize_ * 1, tileSize_ * 1};
-    player_.vel = 80.f;
-    player_.texture = createTextureFromFile("res/goblin.png");
+    for(Player& player: players_)
+    {
+        player.texture = &goblinTexture_;
+    }
 
-    emitter_.spawn.pos = {tileSize_ * 11, tileSize_ * 8};
-    emitter_.spawn.size = {5.f, 5.f};
-    emitter_.spawn.hz = 100.f;
-    emitter_.particleRanges.life = {3.f, 6.f};
-    emitter_.particleRanges.size = {0.25f, 2.f};
-    emitter_.particleRanges.vel = {{-3.5f, -30.f}, {3.5f, -2.f}};
-    emitter_.particleRanges.color = {{0.1f, 0.f, 0.f, 0.f}, {0.5f, 0.25f, 0.f, 0.f}};
-    emitter_.reserve();
+    players_[0].pos = {tileSize_ * 1, tileSize_ * 1};
+    players_[0].prevDir = Dir::Down;
+
+    players_[1].pos = {tileSize_ * 8, tileSize_ * 8};
+    players_[1].prevDir = Dir::Left;
+
 }
 
 GameScene::~GameScene()
 {
-    deleteTexture(player_.texture);
+    deleteTexture(goblinTexture_);
     deleteTexture(tileTexture_);
     deleteGLBuffers(glBuffers_);
 }
@@ -194,81 +215,96 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
             switch(e.key.key)
             {
-                case GLFW_KEY_UP:    keys_.up = on;   break;
-                case GLFW_KEY_DOWN:  keys_.down = on; break;
-                case GLFW_KEY_LEFT:  keys_.left = on; break;
-                case GLFW_KEY_RIGHT: keys_.right = on;
+                case GLFW_KEY_W:     keys_[0].up = on;    break;
+                case GLFW_KEY_S:     keys_[0].down = on;  break;
+                case GLFW_KEY_A:     keys_[0].left = on;  break;
+                case GLFW_KEY_D:     keys_[0].right = on; break;
+
+                case GLFW_KEY_UP:    keys_[1].up = on;    break;
+                case GLFW_KEY_DOWN:  keys_[1].down = on;  break;
+                case GLFW_KEY_LEFT:  keys_[1].left = on;  break;
+                case GLFW_KEY_RIGHT: keys_[1].right = on;
             }
         }
     }
 
-    if     (keys_.left)  player_.dir = Dir::Left;
-    else if(keys_.right) player_.dir = Dir::Right;
-    else if(keys_.up)    player_.dir = Dir::Up;
-    else if(keys_.down)  player_.dir = Dir::Down;
-    else                 player_.dir = Dir::Nil;
+    assert(getSize(players_) >= getSize(keys_));
+
+    for(int i = 0; i < getSize(keys_); ++i)
+    {
+        if(players_[i].dir)
+            players_[i].prevDir = players_[i].dir;
+
+        if     (keys_[i].left)  players_[i].dir = Dir::Left;
+        else if(keys_[i].right) players_[i].dir = Dir::Right;
+        else if(keys_[i].up)    players_[i].dir = Dir::Up;
+        else if(keys_[i].down)  players_[i].dir = Dir::Down;
+        else                    players_[i].dir = Dir::Nil;
+    }
 }
 
 void GameScene::update()
 {
     emitter_.update(frame_.time);
 
-    player_.pos.x += player_.vel * frame_.time * dirVecs_[player_.dir].x;
-    player_.pos.y += player_.vel * frame_.time * dirVecs_[player_.dir].y;
-    player_.anims[player_.dir].update(frame_.time);
-
-    const ivec2 playerTile = getPlayerTile(player_.pos, tileSize_);
-    bool collision = false;
-
-    for(int i = -1; i < 2; ++i)
+    for(Player& player: players_)
     {
-        for(int j = -1; j < 2; ++j)
-        {
-            const ivec2 tile = {playerTile.x + i, playerTile.y + j};
+        player.pos.x += player.vel * frame_.time * dirVecs_[player.dir].x;
+        player.pos.y += player.vel * frame_.time * dirVecs_[player.dir].y;
+        player.anims[player.dir].update(frame_.time);
 
-            if(tiles_[tile.y][tile.x] != 1 && isCollision(player_.pos, tile, tileSize_))
+        const ivec2 playerTile = getPlayerTile(player.pos, tileSize_);
+        bool collision = false;
+
+        for(int i = -1; i < 2; ++i)
+        {
+            for(int j = -1; j < 2; ++j)
             {
-                collision = true;
-                goto end;
+                const ivec2 tile = {playerTile.x + i, playerTile.y + j};
+
+                if(tiles_[tile.y][tile.x] != 1 && isCollision(player.pos, tile, tileSize_))
+                {
+                    collision = true;
+                    goto end;
+                }
             }
         }
-    }
-
 end:
-    if(collision)
-    {
-        const vec2 playerTilePos = {playerTile.x * tileSize_, playerTile.y * tileSize_};
-
-        if(player_.dir == Dir::Left || player_.dir == Dir::Right)
+        if(collision)
         {
-            player_.pos.x = playerTilePos.x;
-        }
-        else
-        {
-            player_.pos.y = playerTilePos.y;
-        }
+            const vec2 playerTilePos = {playerTile.x * tileSize_, playerTile.y * tileSize_};
 
-        const ivec2 targetTile = {int(playerTile.x + dirVecs_[player_.dir].x),
-                                  int(playerTile.y + dirVecs_[player_.dir].y)};
-
-        // important: y first, x second
-        if(tiles_[targetTile.y][targetTile.x] == 1)
-        {
-
-            const vec2 slideVec = {playerTilePos.x - player_.pos.x,
-                                   playerTilePos.y - player_.pos.y};
-
-            const vec2 slideDir = normalize(slideVec);
-
-            player_.pos.x += player_.vel * frame_.time * slideDir.x;
-            player_.pos.y += player_.vel * frame_.time * slideDir.y;
-
-            const vec2 newSlideVec = {playerTilePos.x - player_.pos.x,
-                                      playerTilePos.y - player_.pos.y};
-
-            if(dot(slideVec, newSlideVec) < 0.f)
+            if(player.dir == Dir::Left || player.dir == Dir::Right)
             {
-                player_.pos = playerTilePos;
+                player.pos.x = playerTilePos.x;
+            }
+            else
+            {
+                player.pos.y = playerTilePos.y;
+            }
+
+            const ivec2 targetTile = {int(playerTile.x + dirVecs_[player.dir].x),
+                                      int(playerTile.y + dirVecs_[player.dir].y)};
+
+            // important: y first, x second
+            if(tiles_[targetTile.y][targetTile.x] == 1)
+            {
+
+                const vec2 slideVec = {playerTilePos.x - player.pos.x,
+                                       playerTilePos.y - player.pos.y};
+
+                const vec2 slideDir = normalize(slideVec);
+
+                player.pos.x += player.vel * frame_.time * slideDir.x;
+                player.pos.y += player.vel * frame_.time * slideDir.y;
+
+                const vec2 newSlideVec = {playerTilePos.x - player.pos.x,
+                                          playerTilePos.y - player.pos.y};
+
+                if(dot(slideVec, newSlideVec) < 0.f)
+                {
+                    player.pos = playerTilePos;
+                }
             }
         }
     }
@@ -287,9 +323,9 @@ void GameScene::render(const GLuint program)
 
     // 1) render the tilemap
 
-    updateGLBuffers(glBuffers_, rects_, getSize(rects_));
     uniform1i(program, "mode", FragmentMode::Texture);
     bindTexture(tileTexture_);
+    updateGLBuffers(glBuffers_, rects_, getSize(rects_));
     renderGLBuffers(glBuffers_, getSize(rects_));
 
     // 2) render the player tile
@@ -298,47 +334,52 @@ void GameScene::render(const GLuint program)
         rect.color = {1.f, 0.f, 0.f, 0.22f};
         rect.size = {tileSize_, tileSize_};
 
-        const ivec2 tile = getPlayerTile(player_.pos, tileSize_);
-        rect.pos.x = tile.x * tileSize_;
-        rect.pos.y = tile.y * tileSize_;
-
         uniform1i(program, "mode", FragmentMode::Color);
+
+        for(const Player& player: players_)
+        {
+            const ivec2 tile = getPlayerTile(player.pos, tileSize_);
+            rect.pos.x = tile.x * tileSize_;
+            rect.pos.y = tile.y * tileSize_;
+
+            updateGLBuffers(glBuffers_, &rect, 1);
+            renderGLBuffers(glBuffers_, 1);
+        }
+    }
+
+    // 3) render the players
+
+    for(Player& player: players_)
+    {
+        Rect rect;
+        rect.pos = player.pos;
+        rect.size = {tileSize_, tileSize_};
+
+        const vec4 frame = player.dir ? player.anims[player.dir].getCurrentFrame() :
+                                        player.anims[player.prevDir].getCurrentFrame();
+
+        rect.texRect.x = frame.x / player.texture->size.x;
+        rect.texRect.y = frame.y / player.texture->size.y;
+        rect.texRect.z = frame.z / player.texture->size.x;
+        rect.texRect.w = frame.w / player.texture->size.y;
+
+        rect.color = {1.f, 0.f, 0.5f, 0.15f};
+        uniform1i(program, "mode", FragmentMode::Color);
+        updateGLBuffers(glBuffers_, &rect, 1);
+        renderGLBuffers(glBuffers_, 1);
+
+        rect.color = {1.f, 1.f, 1.f, 1.f};
+        uniform1i(program, "mode", FragmentMode::Texture);
+        bindTexture(*player.texture);
         updateGLBuffers(glBuffers_, &rect, 1);
         renderGLBuffers(glBuffers_, 1);
     }
 
-    // 3) render the player
-
-    Rect rect;
-    rect.pos = player_.pos;
-    rect.size = {tileSize_, tileSize_};
-    static vec4 frame = player_.anims[Dir::Down].frames[0];
-
-    if(player_.dir != Dir::Nil)
-    {
-        frame = player_.anims[player_.dir].getCurrentFrame();
-    }
-
-    rect.texRect.x = frame.x / player_.texture.size.x;
-    rect.texRect.y = frame.y / player_.texture.size.y;
-    rect.texRect.z = frame.z / player_.texture.size.x;
-    rect.texRect.w = frame.w / player_.texture.size.y;
-
-    rect.color = {1.f, 0.f, 0.5f, 0.15f};
-    updateGLBuffers(glBuffers_, &rect, 1);
-    renderGLBuffers(glBuffers_, 1);
-
-    rect.color = {1.f, 1.f, 1.f, 1.f};
-    updateGLBuffers(glBuffers_, &rect, 1);
-    uniform1i(program, "mode", FragmentMode::Texture);
-    bindTexture(player_.texture);
-    renderGLBuffers(glBuffers_, 1);
-
     // 4) particles
 
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    updateGLBuffers(glBuffers_, emitter_.rects.data(), emitter_.numActive);
     uniform1i(program, "mode", FragmentMode::Color);
+    updateGLBuffers(glBuffers_, emitter_.rects.data(), emitter_.numActive);
     renderGLBuffers(glBuffers_, emitter_.numActive);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
