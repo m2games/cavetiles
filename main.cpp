@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <time.h>
 #include "imgui/imgui.h"
 //#include "imgui/imgui_impl_glfw_gl3.h"
 #include "Array.hpp"
@@ -26,8 +27,6 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "imgui/stb_truetype.h"
 
-// @TODO(matiTechno): inline?
-
 static GLint getUniformLocation(GLuint program, const char* const name)
 {
     GLint loc = glGetUniformLocation(program, name);
@@ -35,6 +34,8 @@ static GLint getUniformLocation(GLuint program, const char* const name)
         printf("program = %u: unfiform '%s' is inactive\n", program, name);
     return loc;
 }
+
+// @TODO(matiTechno): inline?
 
 void uniform1i(const GLuint program, const char* const name, const int i)
 {
@@ -803,6 +804,23 @@ Camera expandToMatchAspectRatio(Camera camera, const vec2 viewportSize)
     return camera;
 }
 
+// @TODO(matiTechno): do a research on rngs, shuffle bag (rand() might not be good enough)
+// [a, b] or [b, a]
+
+float getRandomFloat(const float a, const float b)
+{
+    const float max = max(a, b);
+    const float min = min(a, b);
+    return min + (max - min) * ( float(rand()) / float(RAND_MAX) );
+}
+
+int getRandomInt(const int a, const int b)
+{
+    const int max = max(a, b);
+    const int min = min(a, b);
+    return min + rand() / (RAND_MAX / (max - min + 1) + 1);
+}
+
 int main()
 {
     glfwSetErrorCallback(errorCallback);
@@ -827,6 +845,9 @@ int main()
         glfwTerminate();
         return EXIT_FAILURE;
     }
+
+    // @TODO(matiTechno): do a research on rngs, shuffle bag (rand() might not be good enough)
+    srand(time(nullptr));
 
     // @TODO(matiTechno): fmod error handling? (currently we only print them)
     FCHECK( FMOD_System_Create(&fmodSystem) );

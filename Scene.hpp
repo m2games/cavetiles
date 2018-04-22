@@ -2,6 +2,7 @@
 
 #include "Array.hpp"
 #include "fmod/fmod.h"
+#include "float.h"
 
 #undef max
 #define max(a,b) ((a) > (b) ? (a) : (b))
@@ -17,7 +18,7 @@ constexpr int getSize(T(&)[N])
     return N;
 }
 
-// @TODO(matiTechno): add some operators for vectors and refactor existing code
+// @TODO(matiTechno): add some operators / functions for vectors and refactor existing code
 
 struct ivec2
 {
@@ -165,6 +166,7 @@ void bindProgram(const GLuint program);
 
 // delete with deleteGLBuffers()
 GLBuffers createGLBuffers();
+// @TODO(matiTechno): we might want updateSubGLBuffers()
 void updateGLBuffers(GLBuffers& glBuffers, const Rect* rects, int count);
 // call bindProgram() first
 void renderGLBuffers(GLBuffers& glBuffers, int numRects);
@@ -191,6 +193,10 @@ struct Camera
 
 Camera expandToMatchAspectRatio(Camera camera, vec2 viewportSize);
 
+// [a, b] or [b, a]
+float getRandomFloat(float a, float b);
+int getRandomInt(int a, int b);
+
 class Scene
 {
 public:
@@ -210,6 +216,48 @@ public:
         Scene* newScene = nullptr; // assigned ptr must be returned by new
                                    // game loop will call delete on it
     } frame_;
+};
+
+template<typename T>
+struct Range
+{
+    T min, max;
+};
+
+struct Particle
+{
+    float life;
+    vec2 vel;
+};
+
+struct Emitter
+{
+    // call after setting all the emitter parameters
+    void reserve();
+
+    void update(float dt);
+
+    struct
+    {
+        vec2 pos;
+        vec2 size;
+        float hz;
+        float activeTime = FLT_MAX;
+    } spawn;
+
+    struct
+    {
+        Range<float> life;
+        Range<float> size;
+        Range<vec2> vel;
+        Range<vec4> color;
+    } particleRanges;
+
+    // end of parameters
+    float accumulator = 0.f;
+    int numActive = 0;
+    Array<Particle> particles;
+    Array<Rect> rects;
 };
 
 struct Anim
@@ -261,6 +309,7 @@ private:
     Rect rects_[100];
     vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     const float tileSize_ = 20.f;
+    Emitter emitter_;
 
     struct
     {
