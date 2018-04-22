@@ -163,7 +163,7 @@ GameScene::GameScene()
     emitter_.spawn.hz = 100.f;
     emitter_.particleRanges.life = {3.f, 6.f};
     emitter_.particleRanges.size = {0.25f, 2.f};
-    emitter_.particleRanges.vel = {{-5.f, -2.f}, {5.f, -30.f}};
+    emitter_.particleRanges.vel = {{-3.5f, -30.f}, {3.5f, -2.f}};
     emitter_.particleRanges.color = {{0.1f, 0.f, 0.f, 0.f}, {0.5f, 0.25f, 0.f, 0.f}};
     emitter_.reserve();
 }

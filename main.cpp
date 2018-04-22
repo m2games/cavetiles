@@ -805,19 +805,17 @@ Camera expandToMatchAspectRatio(Camera camera, const vec2 viewportSize)
 }
 
 // @TODO(matiTechno): do a research on rngs, shuffle bag (rand() might not be good enough)
-// [a, b] or [b, a]
+// [min, max]
 
-float getRandomFloat(const float a, const float b)
+float getRandomFloat(const float min, const float max)
 {
-    const float max = max(a, b);
-    const float min = min(a, b);
+    assert(min <= max);
     return min + (max - min) * ( float(rand()) / float(RAND_MAX) );
 }
 
-int getRandomInt(const int a, const int b)
+int getRandomInt(const int min, const int max)
 {
-    const int max = max(a, b);
-    const int min = min(a, b);
+    assert(min <= max);
     return min + rand() / (RAND_MAX / (max - min + 1) + 1);
 }
 

@@ -193,9 +193,9 @@ struct Camera
 
 Camera expandToMatchAspectRatio(Camera camera, vec2 viewportSize);
 
-// [a, b] or [b, a]
-float getRandomFloat(float a, float b);
-int getRandomInt(int a, int b);
+// [min, max]
+float getRandomFloat(float min, float max);
+int getRandomInt(int min, int max);
 
 class Scene
 {
