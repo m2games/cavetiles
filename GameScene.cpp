@@ -114,7 +114,8 @@ GameScene::GameScene()
 {
     glBuffers_ = createGLBuffers();
     tileTexture_ = createTextureFromFile("res/tiles.png");
-    goblinTexture_ = createTextureFromFile("res/goblin.png");
+    player1Texture_ = createTextureFromFile("res/player1.png");
+    player2Texture_ = createTextureFromFile("res/player2.png");
 
     emitter_.spawn.pos = {tileSize_ * 11, tileSize_ * 8};
     emitter_.spawn.size = {5.f, 5.f};
@@ -154,50 +155,49 @@ GameScene::GameScene()
     }
 
     // specific configuration for each player
+    assert(getSize(players_) >= 2);
 
+    players_[0].pos = {tileSize_ * 1, tileSize_ * 1};
+    players_[0].prevDir = Dir::Down;
+    players_[0].texture = &player1Texture_;
+
+    players_[1].pos = {tileSize_ * 8, tileSize_ * 8};
+    players_[1].prevDir = Dir::Left;
+    players_[1].texture = &player2Texture_;
+
+    // tightly coupled to the texture assets
     for(int i = Dir::Up; i < Dir::Count; ++i)
     {
         Anim anim;
-        anim.frameDt = 0.07f;
+        anim.frameDt = 0.06f;
         anim.numFrames = 4;
+        const float frameSize = 48.f;
 
-        // tightly coupled to the goblin texture asset
-        int y;
+        int x;
         switch(i)
         {
-            case Dir::Up:    y = 2; break;
-            case Dir::Down:  y = 0; break;
-            case Dir::Left:  y = 3; break;
-            case Dir::Right: y = 1;
+            case Dir::Up:    x = 2; break;
+            case Dir::Down:  x = 0; break;
+            case Dir::Left:  x = 1; break;
+            case Dir::Right: x = 3;
         }
 
         for(int i = 0; i < anim.numFrames; ++i)
         {
-            anim.frames[i] = {0.f + 64.f * i, 64.f * y, 64.f, 64.f};
+            anim.frames[i] = {frameSize * x, frameSize * i, frameSize, frameSize};
         }
 
-        for(Player& player: players_)
+        for(int j = 0; j < 2; ++j)
         {
-            player.anims[i] = anim;
+            players_[j].anims[i] = anim;
         }
     }
-
-    for(Player& player: players_)
-    {
-        player.texture = &goblinTexture_;
-    }
-
-    players_[0].pos = {tileSize_ * 1, tileSize_ * 1};
-    players_[0].prevDir = Dir::Down;
-
-    players_[1].pos = {tileSize_ * 8, tileSize_ * 8};
-    players_[1].prevDir = Dir::Left;
-
 }
 
 GameScene::~GameScene()
 {
-    deleteTexture(goblinTexture_);
+    deleteTexture(player1Texture_);
+    deleteTexture(player2Texture_);
     deleteTexture(tileTexture_);
     deleteGLBuffers(glBuffers_);
 }
@@ -337,7 +337,7 @@ void GameScene::render(const GLuint program)
         rect.pos = player.pos;
 
         const vec4 frame = player.dir ? player.anims[player.dir].getCurrentFrame() :
-                                        player.anims[player.prevDir].getCurrentFrame();
+                                        player.anims[player.prevDir].frames[0];
 
         rect.texRect.x = frame.x / player.texture->size.x;
         rect.texRect.y = frame.y / player.texture->size.y;

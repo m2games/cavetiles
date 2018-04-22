@@ -313,7 +313,8 @@ private:
     const float tileSize_ = 20.f;
     Emitter emitter_;
     Texture tileTexture_;
-    Texture goblinTexture_;
+    Texture player1Texture_;
+    Texture player2Texture_;
 
     struct
     {
