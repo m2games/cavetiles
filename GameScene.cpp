@@ -113,6 +113,7 @@ float dot(const vec2 v1, const vec2 v2)
 GameScene::GameScene()
 {
     glBuffers_ = createGLBuffers();
+    tileTexture_ = createTextureFromFile("res/tiles.png");
 
     for (int i = 0; i < 10; i++)
     {
@@ -124,11 +125,16 @@ GameScene::GameScene()
 
             switch (tiles_[i][j])
             {
-                case 1: rect.color = {0.4f, 0.7f, 0.36f, 1.f};   break;
-                case 2: rect.color = {0.3f, 0.f, 0.1f, 1.f};     break;
-                case 3: rect.color = {0.24f, 0.24f, 0.24f, 1.f}; break;
-                case 4: rect.color = {0.86f, 0.84f, 0.14f, 1.f};
+                case 1: rect.texRect = {0.f, 0.f, 64.f, 64.f};   break;
+                case 2: rect.texRect = {64.f, 0.f, 64.f, 64.f};  break;
+                case 3: rect.texRect = {128.f, 0.f, 32.f, 32.f};
+                        rect.color = {0.25f, 0.25f, 0.25f, 1.f}; break;
             }
+
+            rect.texRect.x /= tileTexture_.size.x;
+            rect.texRect.y /= tileTexture_.size.y;
+            rect.texRect.z /= tileTexture_.size.x;
+            rect.texRect.w /= tileTexture_.size.y;
         }
     }
 
@@ -171,6 +177,7 @@ GameScene::GameScene()
 GameScene::~GameScene()
 {
     deleteTexture(player_.texture);
+    deleteTexture(tileTexture_);
     deleteGLBuffers(glBuffers_);
 }
 
@@ -219,7 +226,7 @@ void GameScene::update()
         {
             const ivec2 tile = {playerTile.x + i, playerTile.y + j};
 
-            if(tiles_[tile.y][tile.x] == 3 && isCollision(player_.pos, tile, tileSize_))
+            if(tiles_[tile.y][tile.x] != 1 && isCollision(player_.pos, tile, tileSize_))
             {
                 collision = true;
                 goto end;
@@ -281,7 +288,8 @@ void GameScene::render(const GLuint program)
     // 1) render the tilemap
 
     updateGLBuffers(glBuffers_, rects_, getSize(rects_));
-    uniform1i(program, "mode", FragmentMode::Color);
+    uniform1i(program, "mode", FragmentMode::Texture);
+    bindTexture(tileTexture_);
     renderGLBuffers(glBuffers_, getSize(rects_));
 
     // 2) render the player tile
@@ -294,6 +302,7 @@ void GameScene::render(const GLuint program)
         rect.pos.x = tile.x * tileSize_;
         rect.pos.y = tile.y * tileSize_;
 
+        uniform1i(program, "mode", FragmentMode::Color);
         updateGLBuffers(glBuffers_, &rect, 1);
         renderGLBuffers(glBuffers_, 1);
     }

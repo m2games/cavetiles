@@ -88,6 +88,7 @@ void bindTexture(const Texture& texture, const GLuint unit)
     glBindTexture(GL_TEXTURE_2D, texture.id);
 }
 
+// @TODO(matiTechno): functions for setting texture sampling type
 // delete with deleteTexture()
 static Texture createDefaultTexture()
 {
@@ -110,8 +111,8 @@ Texture createTextureFromFile(const char* const filename)
     Texture tex;
     glGenTextures(1, &tex.id);
     bindTexture(tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     unsigned char* const data = stbi_load(filename, &tex.size.x, &tex.size.y,
                                           nullptr, 4);
