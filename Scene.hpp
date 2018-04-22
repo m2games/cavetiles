@@ -5,6 +5,8 @@
 
 #undef max
 #define max(a,b) ((a) > (b) ? (a) : (b))
+#undef min
+#define min(a,b) ((a) < (b) ? (a) : (b))
 
 using GLuint = unsigned int;
 
@@ -14,6 +16,8 @@ constexpr int getSize(T(&)[N])
 {
     return N;
 }
+
+// @TODO(matiTechno): add some operators for vectors and refactor existing code
 
 struct ivec2
 {
@@ -197,7 +201,7 @@ public:
 
     struct
     {
-        // don't modify these
+        // these are set in the main loop before processInput() call
         float time;  // seconds
         vec2 fbSize; // fb = framebuffer
 

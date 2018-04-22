@@ -1,6 +1,7 @@
 #include "Scene.hpp"
 #include "imgui/imgui.h"
 #include "GLFW/glfw3.h"
+#include <math.h>
 
 void Anim::update(const float dt)
 {
@@ -8,7 +9,7 @@ void Anim::update(const float dt)
     if(accumulator >= frameDt)
     {
         accumulator -= frameDt;
-        ++idx; 
+        ++idx;
         if(idx > numFrames - 1)
             idx = 0;
     }
@@ -28,6 +29,17 @@ bool isCollision(const vec2 playerPos, const ivec2 tile, const float tileSize)
            playerPos.x + tileSize > tilePos.x &&
            playerPos.y < tilePos.y + tileSize &&
            playerPos.y + tileSize > tilePos.y;
+}
+
+float length(const vec2 v)
+{
+    return sqrt(v.x * v.x + v.y * v.y);
+}
+
+vec2 normalize(const vec2 v)
+{
+    const float len = length(v);
+    return {v.x / len, v.y / len};
 }
 
 GameScene::GameScene()
@@ -55,7 +67,7 @@ GameScene::GameScene()
     for(int i = Dir::Up; i < Dir::Count; ++i)
     {
         Anim& anim = player_.anims[i];
-        anim.frameDt = 0.08f;
+        anim.frameDt = 0.07f;
         anim.numFrames = 4;
 
         // tightly coupled to the goblin texture asset
@@ -87,6 +99,9 @@ GameScene::~GameScene()
 
 void GameScene::processInput(const Array<WinEvent>& events)
 {
+    // @TODO(matiTechno): replace with 'gaffer on games' technique
+    frame_.time = min(frame_.time, 0.033f);
+
     for (const WinEvent& e: events)
     {
         if(e.type == WinEvent::Key)
@@ -103,11 +118,11 @@ void GameScene::processInput(const Array<WinEvent>& events)
         }
     }
 
-    if(keys_.up) player_.dir = Dir::Up;
-    else if(keys_.down) player_.dir = Dir::Down;
-    else if(keys_.left) player_.dir = Dir::Left;
+    if     (keys_.left)  player_.dir = Dir::Left;
     else if(keys_.right) player_.dir = Dir::Right;
-    else player_.dir = Dir::Nil;
+    else if(keys_.up)    player_.dir = Dir::Up;
+    else if(keys_.down)  player_.dir = Dir::Down;
+    else                 player_.dir = Dir::Nil;
 }
 
 void GameScene::update()
@@ -117,6 +132,7 @@ void GameScene::update()
     player_.anims[player_.dir].update(frame_.time);
 
     const ivec2 playerTile = getPlayerTile(player_.pos, tileSize_);
+    bool collision = false;
 
     for(int i = -1; i < 2; ++i)
     {
@@ -124,22 +140,52 @@ void GameScene::update()
         {
             const ivec2 tile = {playerTile.x + i, playerTile.y + j};
 
-            if(tiles_[tile.y][tile.x] == 3)
+            if(tiles_[tile.y][tile.x] == 3 && isCollision(player_.pos, tile, tileSize_))
             {
-                if(isCollision(player_.pos, tile, tileSize_))
-                {
-                    if(player_.dir == Dir::Left || player_.dir == Dir::Right)
-                        player_.pos.x = playerTile.x * tileSize_;
-
-                    else 
-                        player_.pos.y = playerTile.y * tileSize_;
-
-                    goto end;
-                }
+                collision = true;
+                goto end;
             }
         }
     }
-end:;
+
+end:
+    if(collision)
+    {
+        const vec2 playerTilePos = {playerTile.x * tileSize_, playerTile.y * tileSize_};
+
+        if(player_.dir == Dir::Left || player_.dir == Dir::Right)
+        {
+            player_.pos.x = playerTilePos.x;
+        }
+        else
+        {
+            player_.pos.y = playerTilePos.y;
+        }
+
+        const ivec2 targetTile = {int(playerTile.x + dirVecs_[player_.dir].x),
+                                  int(playerTile.y + dirVecs_[player_.dir].y)};
+
+        // important: y first, x second
+        if(tiles_[targetTile.y][targetTile.x] == 1)
+        {
+
+            const vec2 slideVec = {playerTilePos.x - player_.pos.x,
+                                   playerTilePos.y - player_.pos.y};
+
+            const vec2 slideDir = normalize(slideVec);
+
+            player_.pos.x += player_.vel * frame_.time * slideDir.x;
+            player_.pos.y += player_.vel * frame_.time * slideDir.y;
+
+            const vec2 newSlideVec = {playerTilePos.x - player_.pos.x,
+                                      playerTilePos.y - player_.pos.y};
+
+            if(slideVec.x * newSlideVec.x < 0.f || slideVec.y * newSlideVec.y < 0.f)
+            {
+                player_.pos = playerTilePos;
+            }
+        }
+    }
 }
 
 void GameScene::render(const GLuint program)
@@ -154,7 +200,7 @@ void GameScene::render(const GLuint program)
     uniform2f(program, "cameraSize", camera.size);
 
     // 1) render the tilemap
-    
+
     updateGLBuffers(glBuffers_, rects_, getSize(rects_));
     uniform1i(program, "mode", FragmentMode::Color);
     renderGLBuffers(glBuffers_, getSize(rects_));
@@ -201,7 +247,7 @@ void GameScene::render(const GLuint program)
     renderGLBuffers(glBuffers_, 1);
 
     // 4) imgui
-    
+
     ImGui::ShowDemoWindow();
     ImGui::Begin("options");
     ImGui::Text("test test test !!!");
