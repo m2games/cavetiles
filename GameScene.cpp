@@ -42,6 +42,11 @@ vec2 normalize(const vec2 v)
     return {v.x / len, v.y / len};
 }
 
+float dot(const vec2 v1, const vec2 v2)
+{
+    return v1.x * v2.x + v1.y * v2.y;
+}
+
 GameScene::GameScene()
 {
     glBuffers_ = createGLBuffers();
@@ -180,7 +185,7 @@ end:
             const vec2 newSlideVec = {playerTilePos.x - player_.pos.x,
                                       playerTilePos.y - player_.pos.y};
 
-            if(slideVec.x * newSlideVec.x < 0.f || slideVec.y * newSlideVec.y < 0.f)
+            if(dot(slideVec, newSlideVec) < 0.f)
             {
                 player_.pos = playerTilePos;
             }
