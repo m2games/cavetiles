@@ -118,8 +118,10 @@ GameScene::GameScene()
     player2Texture_ = createTextureFromFile("res/player2.png");
 
     emitter_.spawn.size = {5.f, 5.f};
-    emitter_.spawn.pos = {tileSize_ * 10 + (tileSize_ - emitter_.spawn.size.x) / 2.f,
-                          tileSize_ * 10 + (tileSize_ - emitter_.spawn.size.y) / 2.f};
+    emitter_.spawn.pos = {tileSize_ * (MapSize - 3) + (tileSize_ - emitter_.spawn.size.x)
+                          / 2.f,
+                          tileSize_ * (MapSize - 3) + (tileSize_ - emitter_.spawn.size.y)
+                          / 2.f};
     emitter_.spawn.hz = 100.f;
     emitter_.particleRanges.life = {3.f, 6.f};
     emitter_.particleRanges.size = {0.25f, 2.f};
