@@ -20,7 +20,7 @@ void Emitter::update(const float dt)
             rects[i] = rects[numActive - 1];
             --numActive;
         }
-        
+
         rects[i].pos.x += particles[i].vel.x * dt;
         rects[i].pos.y += particles[i].vel.y * dt;
         particles[i].life -= dt;
@@ -78,6 +78,17 @@ void Anim::update(const float dt)
     }
 }
 
+// TODO mechanism for creating and destroying dynamites,
+// rather than having them stored in array. Use Array.hpp?
+Dynamite dropDynamite(const vec2 playerPos)
+{
+    Dynamite dynamite;
+    dynamite.pos.x = playerPos.x;
+    dynamite.pos.y = playerPos.y;
+    dynamite.texture = createTextureFromFile("res/dynamite.png");
+    return dynamite;
+}
+
 ivec2 getPlayerTile(const vec2 playerPos, const float tileSize)
 {
     return {int(playerPos.x / tileSize + 0.5f),
@@ -116,6 +127,12 @@ GameScene::GameScene()
     tileTexture_ = createTextureFromFile("res/tiles.png");
     player1Texture_ = createTextureFromFile("res/player1.png");
     player2Texture_ = createTextureFromFile("res/player2.png");
+    dynamiteTexture_ = createTextureFromFile("res/dynamite.png");
+
+    for (Dynamite& dynamite: dynamites_)
+    {
+        dynamite.pos = {2 * MapSize * tileSize_, 2 * MapSize * tileSize_};
+    }
 
     emitter_.spawn.size = {5.f, 5.f};
     emitter_.spawn.pos = {tileSize_ * (MapSize - 3) + (tileSize_ - emitter_.spawn.size.x)
@@ -267,6 +284,7 @@ GameScene::~GameScene()
     deleteTexture(player1Texture_);
     deleteTexture(player2Texture_);
     deleteTexture(tileTexture_);
+    deleteTexture(dynamiteTexture_);
     deleteGLBuffers(glBuffers_);
 }
 
@@ -287,11 +305,13 @@ void GameScene::processInput(const Array<WinEvent>& events)
                 case GLFW_KEY_S:     keys_[0].down = on;  break;
                 case GLFW_KEY_A:     keys_[0].left = on;  break;
                 case GLFW_KEY_D:     keys_[0].right = on; break;
+                case GLFW_KEY_C:     keys_[0].drop = on;  break;
 
                 case GLFW_KEY_UP:    keys_[1].up = on;    break;
                 case GLFW_KEY_DOWN:  keys_[1].down = on;  break;
                 case GLFW_KEY_LEFT:  keys_[1].left = on;  break;
-                case GLFW_KEY_RIGHT: keys_[1].right = on;
+                case GLFW_KEY_RIGHT: keys_[1].right = on; break;
+                case GLFW_KEY_K:     keys_[1].drop = on;  break;
             }
         }
     }
@@ -308,6 +328,9 @@ void GameScene::processInput(const Array<WinEvent>& events)
         else if(keys_[i].up)    players_[i].dir = Dir::Up;
         else if(keys_[i].down)  players_[i].dir = Dir::Down;
         else                    players_[i].dir = Dir::Nil;
+
+        if     (keys_[i].drop)  dynamites_[i] = dropDynamite(players_[i].pos);
+
     }
 }
 
@@ -397,7 +420,7 @@ void GameScene::render(const GLuint program)
     renderGLBuffers(glBuffers_, getSize(rects_));
 
     // 2) render the players
-    
+
     for(Player& player: players_)
     {
         Rect rect;
@@ -418,7 +441,28 @@ void GameScene::render(const GLuint program)
         renderGLBuffers(glBuffers_, 1);
     }
 
-    // 3) particles
+    // 3) render dynamites
+
+    for (Dynamite& dynamite: dynamites_)
+    {
+        Rect rect;
+        rect.size = {tileSize_, tileSize_};
+        rect.pos = dynamite.pos;
+        rect.texRect = {0.f, 0.f, 16.f, 16.f};
+
+        rect.texRect.x /= dynamiteTexture_.size.x;
+        rect.texRect.y /= dynamiteTexture_.size.y;
+        rect.texRect.z /= dynamiteTexture_.size.x;
+        rect.texRect.w /= dynamiteTexture_.size.y;
+
+        uniform1i(program, "mode", FragmentMode::Texture);
+        bindTexture(dynamiteTexture_);
+        updateGLBuffers(glBuffers_, &rect, 1);
+        renderGLBuffers(glBuffers_, 1);
+    }
+
+
+    // 4) particles
 
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     uniform1i(program, "mode", FragmentMode::Color);
@@ -426,7 +470,7 @@ void GameScene::render(const GLuint program)
     renderGLBuffers(glBuffers_, emitter_.numActive);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // 4) imgui
+    // 5) imgui
 
     ImGui::ShowDemoWindow();
     ImGui::Begin("options");
