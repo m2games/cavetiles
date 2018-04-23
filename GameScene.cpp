@@ -117,37 +117,15 @@ GameScene::GameScene()
     player1Texture_ = createTextureFromFile("res/player1.png");
     player2Texture_ = createTextureFromFile("res/player2.png");
 
-    emitter_.spawn.pos = {tileSize_ * 11, tileSize_ * 8};
     emitter_.spawn.size = {5.f, 5.f};
+    emitter_.spawn.pos = {tileSize_ * 10 + (tileSize_ - emitter_.spawn.size.x) / 2.f,
+                          tileSize_ * 10 + (tileSize_ - emitter_.spawn.size.y) / 2.f};
     emitter_.spawn.hz = 100.f;
     emitter_.particleRanges.life = {3.f, 6.f};
     emitter_.particleRanges.size = {0.25f, 2.f};
     emitter_.particleRanges.vel = {{-3.5f, -30.f}, {3.5f, -2.f}};
     emitter_.particleRanges.color = {{0.1f, 0.f, 0.f, 0.f}, {0.5f, 0.25f, 0.f, 0.f}};
     emitter_.reserve();
-
-    for (int i = 0; i < 10; i++)
-    {
-        for (int j = 0; j < 10; j++)
-        {
-            Rect& rect = rects_[j + i * 10];
-            rect.pos = {j * tileSize_, i * tileSize_};
-            rect.size = {tileSize_, tileSize_};
-
-            switch (tiles_[i][j])
-            {
-                case 1: rect.texRect = {0.f, 0.f, 64.f, 64.f};   break;
-                case 2: rect.texRect = {64.f, 0.f, 64.f, 64.f};  break;
-                case 3: rect.texRect = {128.f, 0.f, 32.f, 32.f};
-                        rect.color = {0.25f, 0.25f, 0.25f, 1.f}; break;
-            }
-
-            rect.texRect.x /= tileTexture_.size.x;
-            rect.texRect.y /= tileTexture_.size.y;
-            rect.texRect.z /= tileTexture_.size.x;
-            rect.texRect.w /= tileTexture_.size.y;
-        }
-    }
 
     for(Player& player: players_)
     {
@@ -161,7 +139,7 @@ GameScene::GameScene()
     players_[0].prevDir = Dir::Down;
     players_[0].texture = &player1Texture_;
 
-    players_[1].pos = {tileSize_ * 8, tileSize_ * 8};
+    players_[1].pos = {tileSize_ * (MapSize - 2), tileSize_ * (MapSize - 2)};
     players_[1].prevDir = Dir::Left;
     players_[1].texture = &player2Texture_;
 
@@ -190,6 +168,94 @@ GameScene::GameScene()
         for(int j = 0; j < 2; ++j)
         {
             players_[j].anims[i] = anim;
+        }
+    }
+
+    // tilemap
+
+    // edges
+    for(int i = 0; i < MapSize; ++i)
+    {
+        tiles_[0][i] = 2;
+        tiles_[MapSize - 1][i] = 2;
+        tiles_[i][0] = 2;
+        tiles_[i][MapSize - 1] = 2;
+    }
+
+    // pillars
+    for(int i = 2; i < MapSize - 1; i += 2)
+    {
+        for(int j = 2; j < MapSize - 1; j += 2)
+        {
+            tiles_[j][i] = 2;
+        }
+    }
+
+    // crates
+    int freeTiles[MapSize * MapSize];
+    int numFreeTiles = 0;
+
+    for(int i = 0; i < MapSize * MapSize; ++i)
+    {
+        if(tiles_[0][i] == 0)
+        {
+            // check if it is not adjacent to the players
+
+            const ivec2 targetTile = {i % MapSize, i / MapSize};
+
+            for(const Player& player: players_)
+            {
+                const ivec2 playerTile = getPlayerTile(player.pos, tileSize_);
+
+                for(int k = -1; k < 2; ++k)
+                {
+                    for(int l = -1; l < 2; ++l)
+                    {
+                        const ivec2 adjacentTile = {playerTile.x + k, playerTile.y + l};
+
+                        if(targetTile.x == adjacentTile.x && targetTile.y == adjacentTile.y)
+                            goto end;
+                    }
+                }
+            }
+            freeTiles[numFreeTiles] = i;
+            ++numFreeTiles;
+        }
+end:;
+    }
+
+    const int numCrates = numFreeTiles * 2 / 3;
+    for(int i = 0; i < numCrates; ++i)
+    {
+        const int freeTileIdx = getRandomInt(0, numFreeTiles - 1);
+        const int tileIdx = freeTiles[freeTileIdx];
+        freeTiles[freeTileIdx] = freeTiles[numFreeTiles - 1];
+        tiles_[0][tileIdx] = 1;
+        numFreeTiles -= 1;
+    }
+
+    // rects
+
+    for (int i = 0; i < MapSize; ++i)
+    {
+        for (int j = 0; j < MapSize; ++j)
+        {
+            Rect& rect = rects_[j + i * MapSize];
+            rect.pos = {j * tileSize_, i * tileSize_};
+            rect.size = {tileSize_, tileSize_};
+
+            switch (tiles_[i][j])
+            {
+                case 0: rect.texRect = {0.f, 0.f, 64.f, 64.f};   break;
+                case 1: rect.texRect = {64.f, 0.f, 64.f, 64.f};  break;
+                case 2: rect.texRect = {128.f, 0.f, 32.f, 32.f};
+                        rect.color = {0.25f, 0.25f, 0.25f, 1.f}; break;
+            }
+
+            rect.texRect.x /= tileTexture_.size.x;
+            rect.texRect.y /= tileTexture_.size.y;
+            rect.texRect.z /= tileTexture_.size.x;
+            rect.texRect.w /= tileTexture_.size.y;
         }
     }
 }
@@ -262,7 +328,7 @@ void GameScene::update()
             {
                 const ivec2 tile = {playerTile.x + i, playerTile.y + j};
 
-                if(tiles_[tile.y][tile.x] != 1 && isCollision(player.pos, tile, tileSize_))
+                if(tiles_[tile.y][tile.x] != 0 && isCollision(player.pos, tile, tileSize_))
                 {
                     collision = true;
                     goto end;
@@ -287,7 +353,7 @@ end:
                                       int(playerTile.y + dirVecs_[player.dir].y)};
 
             // important: y first, x second
-            if(tiles_[targetTile.y][targetTile.x] == 1)
+            if(tiles_[targetTile.y][targetTile.x] == 0)
             {
 
                 const vec2 slideVec = {playerTilePos.x - player.pos.x,
@@ -316,7 +382,7 @@ void GameScene::render(const GLuint program)
 
     Camera camera;
     camera.pos = {0.f, 0.f};
-    camera.size = {10 * tileSize_, 10 * tileSize_};
+    camera.size = {MapSize * tileSize_, MapSize * tileSize_};
     camera = expandToMatchAspectRatio(camera, frame_.fbSize);
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);

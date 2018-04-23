@@ -306,11 +306,14 @@ public:
     void render(GLuint program) override;
 
 private:
-    GLBuffers glBuffers_;
-    Player players_[2];
-    Rect rects_[100];
-    vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
+    enum {MapSize = 15};
     const float tileSize_ = 20.f;
+
+    GLBuffers glBuffers_;
+    Rect rects_[MapSize * MapSize];
+    int tiles_[MapSize][MapSize] = {}; // initialized to 0
+    Player players_[2];
+    vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     Emitter emitter_;
     Texture tileTexture_;
     Texture player1Texture_;
@@ -323,18 +326,4 @@ private:
         bool left = false;
         bool right = false;
     } keys_[2];
-
-    int tiles_[10][10] =
-    {
-        {3, 3, 3, 3, 3, 3, 3, 3, 3, 3},
-        {3, 1, 1, 1, 1, 1, 1, 1, 1, 3},
-        {3, 1, 3, 1, 3, 2, 3, 3, 1, 3},
-        {3, 1, 3, 1, 1, 2, 1, 3, 1, 3},
-        {3, 1, 1, 1, 3, 3, 1, 3, 1, 3},
-        {3, 1, 3, 1, 1, 1, 1, 3, 1, 3},
-        {3, 1, 1, 2, 3, 1, 3, 2, 2, 3},
-        {3, 1, 3, 2, 3, 1, 3, 1, 3, 3},
-        {3, 1, 1, 2, 1, 1, 1, 1, 1, 3},
-        {3, 3, 3, 3, 3, 3, 3, 3, 3, 3}
-    };
 };
