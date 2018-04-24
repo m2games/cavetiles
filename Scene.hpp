@@ -287,10 +287,9 @@ struct Dir
 
 struct Dynamite
 {
-    vec2 pos;
-    int range_ = 2;
-    Texture texture;
-    float timer = 2000; // in ms?
+    ivec2 tile;
+    Texture* texture;
+    float timer;
 };
 
 struct Player
@@ -302,6 +301,7 @@ struct Player
     Anim anims[Dir::Count];
     // for animation only
     int prevDir;
+    float dropCooldown = 0.f;
 };
 
 class GameScene: public Scene
@@ -321,7 +321,8 @@ private:
     Rect rects_[MapSize * MapSize];
     int tiles_[MapSize][MapSize] = {}; // initialized to 0
     Player players_[2];
-    Dynamite dynamites_[2];
+    Dynamite dynamites_[50];
+    int numDynamites_ = 0;
     vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     Emitter emitter_;
     Texture tileTexture_;

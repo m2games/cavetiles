@@ -78,17 +78,6 @@ void Anim::update(const float dt)
     }
 }
 
-// TODO mechanism for creating and destroying dynamites,
-// rather than having them stored in array. Use Array.hpp?
-Dynamite dropDynamite(const vec2 playerPos)
-{
-    Dynamite dynamite;
-    dynamite.pos.x = playerPos.x;
-    dynamite.pos.y = playerPos.y;
-    dynamite.texture = createTextureFromFile("res/dynamite.png");
-    return dynamite;
-}
-
 ivec2 getPlayerTile(const vec2 playerPos, const float tileSize)
 {
     return {int(playerPos.x / tileSize + 0.5f),
@@ -128,11 +117,6 @@ GameScene::GameScene()
     player1Texture_ = createTextureFromFile("res/player1.png");
     player2Texture_ = createTextureFromFile("res/player2.png");
     dynamiteTexture_ = createTextureFromFile("res/dynamite.png");
-
-    for (Dynamite& dynamite: dynamites_)
-    {
-        dynamite.pos = {2 * MapSize * tileSize_, 2 * MapSize * tileSize_};
-    }
 
     emitter_.spawn.size = {5.f, 5.f};
     emitter_.spawn.pos = {tileSize_ * (MapSize - 3) + (tileSize_ - emitter_.spawn.size.x)
@@ -176,7 +160,7 @@ GameScene::GameScene()
             case Dir::Up:    x = 2; break;
             case Dir::Down:  x = 0; break;
             case Dir::Left:  x = 1; break;
-            case Dir::Right: x = 3;
+            case Dir::Right: x = 3; break;
         }
 
         for(int i = 0; i < anim.numFrames; ++i)
@@ -295,9 +279,9 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
     for (const WinEvent& e: events)
     {
-        if(e.type == WinEvent::Key)
+        if(e.type == WinEvent::Key && e.key.action != GLFW_REPEAT)
         {
-            const bool on = e.key.action != GLFW_RELEASE;
+            const bool on = e.key.action == GLFW_PRESS;
 
             switch(e.key.key)
             {
@@ -329,8 +313,17 @@ void GameScene::processInput(const Array<WinEvent>& events)
         else if(keys_[i].down)  players_[i].dir = Dir::Down;
         else                    players_[i].dir = Dir::Nil;
 
-        if     (keys_[i].drop)  dynamites_[i] = dropDynamite(players_[i].pos);
-
+        if     (keys_[i].drop && players_[i].dropCooldown <= 0.f)
+        {
+            Dynamite& dynamite = dynamites_[numDynamites_];
+            dynamite.texture = &dynamiteTexture_;
+            dynamite.tile = getPlayerTile(players_[i].pos, tileSize_);
+            dynamite.timer = 2.f;
+            ++numDynamites_;
+            players_[i].dropCooldown = 2.f;
+        }
+        
+        keys_[i].drop = false;
     }
 }
 
@@ -338,11 +331,23 @@ void GameScene::update()
 {
     emitter_.update(frame_.time);
 
+    for(int i = 0; i < numDynamites_; ++i)
+    {
+        if(dynamites_[i].timer <= 0.f)
+        {
+            --numDynamites_;
+            dynamites_[i] = dynamites_[numDynamites_];
+        }
+
+        dynamites_[i].timer -= frame_.time;
+    }
+
     for(Player& player: players_)
     {
         player.pos.x += player.vel * frame_.time * dirVecs_[player.dir].x;
         player.pos.y += player.vel * frame_.time * dirVecs_[player.dir].y;
         player.anims[player.dir].update(frame_.time);
+        player.dropCooldown -= frame_.time;
 
         const ivec2 playerTile = getPlayerTile(player.pos, tileSize_);
         bool collision = false;
@@ -435,7 +440,26 @@ void GameScene::render(const GLuint program)
     updateGLBuffers(glBuffers_, rects_, getSize(rects_));
     renderGLBuffers(glBuffers_, getSize(rects_));
 
-    // 2) render the players
+    // 2) render dynamites
+
+    Rect dRects[getSize(dynamites_)];
+    for(int i = 0; i < numDynamites_; ++i)
+    {
+        dRects[i].size = {tileSize_, tileSize_};
+        dRects[i].pos = {dynamites_[i].tile.x * tileSize_, dynamites_[i].tile.y * tileSize_};
+        dRects[i].texRect = {0.f, 0.f, 16.f, 16.f};
+        dRects[i].texRect.x /= dynamiteTexture_.size.x;
+        dRects[i].texRect.y /= dynamiteTexture_.size.y;
+        dRects[i].texRect.z /= dynamiteTexture_.size.x;
+        dRects[i].texRect.w /= dynamiteTexture_.size.y;
+    }
+
+    uniform1i(program, "mode", FragmentMode::Texture);
+    bindTexture(dynamiteTexture_);
+    updateGLBuffers(glBuffers_, dRects, numDynamites_);
+    renderGLBuffers(glBuffers_, numDynamites_);
+
+    // 3) render the players
 
     for(Player& player: players_)
     {
@@ -459,26 +483,6 @@ void GameScene::render(const GLuint program)
 
         uniform1i(program, "mode", FragmentMode::Texture);
         bindTexture(*player.texture);
-        updateGLBuffers(glBuffers_, &rect, 1);
-        renderGLBuffers(glBuffers_, 1);
-    }
-
-    // 3) render dynamites
-
-    for (Dynamite& dynamite: dynamites_)
-    {
-        Rect rect;
-        rect.size = {tileSize_, tileSize_};
-        rect.pos = dynamite.pos;
-        rect.texRect = {0.f, 0.f, 16.f, 16.f};
-
-        rect.texRect.x /= dynamiteTexture_.size.x;
-        rect.texRect.y /= dynamiteTexture_.size.y;
-        rect.texRect.z /= dynamiteTexture_.size.x;
-        rect.texRect.w /= dynamiteTexture_.size.y;
-
-        uniform1i(program, "mode", FragmentMode::Texture);
-        bindTexture(dynamiteTexture_);
         updateGLBuffers(glBuffers_, &rect, 1);
         renderGLBuffers(glBuffers_, 1);
     }
