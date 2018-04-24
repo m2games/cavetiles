@@ -379,7 +379,7 @@ end:
 
             ivec2 slideTile;
 
-            if( (length(offset) > tileSize_ / 3.5f) &&
+            if( (length(offset) > tileSize_ / 4.f) &&
                 (tiles_[int(playerTile.y + dirVecs_[player.dir].y)]
                        [int(playerTile.x + dirVecs_[player.dir].x)] != 0) )
             {
