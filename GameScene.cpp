@@ -337,6 +337,22 @@ void GameScene::update()
     {
         if(dynamites_[i].timer <= 0.f)
         {
+            for(int i = Dir::Up; i < Dir::Count; ++i)
+            {
+                vec2 dir = dirVecs_[i];
+                for(int j = 1; j <= dynamites_[i].range; ++j)
+                {
+                    ivec2 tile = {dynamites_[i].tile.x + int(dir.x) * j, dynamites_[i].tile.y + int(dir.y) * j};
+                    if(tiles_[tile.y][tile.x] == 1)
+                    {
+                        tiles_[tile.y][tile.x] = 0;
+                        break;
+                    } else if(tiles_[tile.y][tile.x] == 2)
+                    {
+                        break;
+                    }
+                }
+            }
             --numDynamites_;
             dynamites_[i] = dynamites_[numDynamites_];
         }

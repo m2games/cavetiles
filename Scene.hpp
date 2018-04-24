@@ -288,6 +288,7 @@ struct Dir
 struct Dynamite
 {
     ivec2 tile;
+    int range = 2;
     Texture* texture;
     float timer;
 };
