@@ -315,6 +315,8 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
         if     (keys_[i].drop && players_[i].dropCooldown <= 0.f)
         {
+            assert (numDynamites_ < getSize(dynamites_));
+            players_[i].isOnDynamite = true;
             Dynamite& dynamite = dynamites_[numDynamites_];
             dynamite.texture = &dynamiteTexture_;
             dynamite.tile = getPlayerTile(players_[i].pos, tileSize_);
@@ -322,7 +324,7 @@ void GameScene::processInput(const Array<WinEvent>& events)
             ++numDynamites_;
             players_[i].dropCooldown = 2.f;
         }
-        
+
         keys_[i].drop = false;
     }
 }
@@ -350,6 +352,18 @@ void GameScene::update()
         player.dropCooldown -= frame_.time;
 
         const ivec2 playerTile = getPlayerTile(player.pos, tileSize_);
+
+        for(int i = 0; i < numDynamites_; ++i)
+        {
+            if(!player.isOnDynamite && isCollision(player.pos, dynamites_[i].tile, tileSize_))
+            {
+                player.pos = {playerTile.x * tileSize_, playerTile.y * tileSize_};
+            } else if (!isCollision(player.pos, dynamites_[i].tile, tileSize_))
+            {
+                player.isOnDynamite = false;
+            }
+        }
+
         bool collision = false;
 
         for(int i = -1; i < 2; ++i)
@@ -442,7 +456,7 @@ void GameScene::render(const GLuint program)
 
     // 2) render dynamites
 
-    Rect dRects[getSize(dynamites_)];
+    Rect dRects[MaxDynamites];
     for(int i = 0; i < numDynamites_; ++i)
     {
         dRects[i].size = {tileSize_, tileSize_};

@@ -299,6 +299,7 @@ struct Player
     int dir = Dir::Nil;
     Texture* texture;
     Anim anims[Dir::Count];
+    bool isOnDynamite = false;
     // for animation only
     int prevDir;
     float dropCooldown = 0.f;
@@ -314,14 +315,14 @@ public:
     void render(GLuint program) override;
 
 private:
-    enum {MapSize = 15};
+    enum {MapSize = 15, MaxDynamites = 50};
     const float tileSize_ = 20.f;
 
     GLBuffers glBuffers_;
     Rect rects_[MapSize * MapSize];
     int tiles_[MapSize][MapSize] = {}; // initialized to 0
     Player players_[2];
-    Dynamite dynamites_[50];
+    Dynamite dynamites_[MaxDynamites];
     int numDynamites_ = 0;
     vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     Emitter emitter_;
