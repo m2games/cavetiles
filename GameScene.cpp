@@ -363,39 +363,55 @@ void GameScene::update()
 end:
         if(collision)
         {
-            const vec2 playerTilePos = {playerTile.x * tileSize_, playerTile.y * tileSize_};
-
             if(player.dir == Dir::Left || player.dir == Dir::Right)
             {
-                player.pos.x = playerTilePos.x;
+                player.pos.x = playerTile.x * tileSize_;
             }
             else
             {
-                player.pos.y = playerTilePos.y;
+                player.pos.y = playerTile.y * tileSize_;
             }
 
-            const ivec2 targetTile = {int(playerTile.x + dirVecs_[player.dir].x),
-                                      int(playerTile.y + dirVecs_[player.dir].y)};
+            // sliding on the corners mechanic
+
+            const vec2 offset = {player.pos.x - playerTile.x * tileSize_,
+                                 player.pos.y - playerTile.y * tileSize_};
+
+            ivec2 slideTile;
+
+            if( (length(offset) > tileSize_ / 3.5f) &&
+                (tiles_[int(playerTile.y + dirVecs_[player.dir].y)]
+                       [int(playerTile.x + dirVecs_[player.dir].x)] != 0) )
+            {
+                vec2 norm = normalize(offset);
+                slideTile.x = playerTile.x + norm.x;
+                slideTile.y = playerTile.y + norm.y;
+                // @matiTechno
+                assert(slideTile.x != playerTile.x || slideTile.y != playerTile.y);
+            }
+            else
+                slideTile = playerTile;
+
+            const vec2 slideTilePos = {slideTile.x * tileSize_, slideTile.y * tileSize_};
 
             // important: y first, x second
-            if(tiles_[targetTile.y][targetTile.x] == 0)
+            // check if a tile next to slideTile (in the player direction) is free
+            if(tiles_[int(slideTile.y + dirVecs_[player.dir].y)]
+                     [int(slideTile.x + dirVecs_[player.dir].x)] == 0)
             {
-
-                const vec2 slideVec = {playerTilePos.x - player.pos.x,
-                                       playerTilePos.y - player.pos.y};
+                const vec2 slideVec = {slideTilePos.x - player.pos.x,
+                                       slideTilePos.y - player.pos.y};
 
                 const vec2 slideDir = normalize(slideVec);
 
                 player.pos.x += player.vel * frame_.time * slideDir.x;
                 player.pos.y += player.vel * frame_.time * slideDir.y;
 
-                const vec2 newSlideVec = {playerTilePos.x - player.pos.x,
-                                          playerTilePos.y - player.pos.y};
+                const vec2 newSlideVec = {slideTilePos.x - player.pos.x,
+                                          slideTilePos.y - player.pos.y};
 
                 if(dot(slideVec, newSlideVec) < 0.f)
-                {
-                    player.pos = playerTilePos;
-                }
+                    player.pos = slideTilePos;
             }
         }
     }
@@ -426,6 +442,12 @@ void GameScene::render(const GLuint program)
         Rect rect;
         rect.size = {tileSize_, tileSize_};
         rect.pos = player.pos;
+
+        rect.color.w = 0.2f;
+        uniform1i(program, "mode", FragmentMode::Color);
+        updateGLBuffers(glBuffers_, &rect, 1);
+        renderGLBuffers(glBuffers_, 1);
+        rect.color.w = 1.f;
 
         const vec4 frame = player.dir ? player.anims[player.dir].getCurrentFrame() :
                                         player.anims[player.prevDir].frames[0];
@@ -460,7 +482,6 @@ void GameScene::render(const GLuint program)
         updateGLBuffers(glBuffers_, &rect, 1);
         renderGLBuffers(glBuffers_, 1);
     }
-
 
     // 4) particles
 
