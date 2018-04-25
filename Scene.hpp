@@ -217,6 +217,7 @@ public:
                                    // game loop will call delete on it
     } frame_;
 };
+// GAME STRUCTURES
 
 template<typename T>
 struct Range
@@ -262,14 +263,22 @@ struct Emitter
 
 struct Anim
 {
+    vec4 getCurrentFrame() const {return frames[idx];}
+    void update(float dt);
+
     float frameDt;
     int numFrames;
     vec4 frames[12];
     float accumulator = 0.f;
     int idx = 0;
+    bool ended = false;
+};
 
-    vec4 getCurrentFrame() const {return frames[idx];}
-    void update(float dt);
+struct Explosion
+{
+    Anim anim;
+    ivec2 tile;
+    float size;
 };
 
 struct Dir
@@ -289,7 +298,6 @@ struct Dynamite
 {
     ivec2 tile;
     int range = 2;
-    Texture* texture;
     float timer;
 };
 
@@ -301,8 +309,7 @@ struct Player
     Texture* texture;
     Anim anims[Dir::Count];
     bool isOnDynamite = false;
-    // for animation only
-    int prevDir;
+    int prevDir; // for animation only
     float dropCooldown = 0.f;
 };
 
@@ -316,21 +323,32 @@ public:
     void render(GLuint program) override;
 
 private:
-    enum {MapSize = 15, MaxDynamites = 50};
+    enum {MapSize = 15};
     const float tileSize_ = 20.f;
 
     GLBuffers glBuffers_;
     Rect rects_[MapSize * MapSize];
     int tiles_[MapSize][MapSize] = {}; // initialized to 0
     Player players_[2];
-    Dynamite dynamites_[MaxDynamites];
-    int numDynamites_ = 0;
+    FixedArray<Dynamite, 50> dynamites_;
+    FixedArray<Explosion, 50> explosions_;
     vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     Emitter emitter_;
-    Texture tileTexture_;
-    Texture player1Texture_;
-    Texture player2Texture_;
-    Texture dynamiteTexture_;
+
+    // @TODO(matiTechno): we need to think about hashmaps
+    struct
+    {
+        Texture tile;
+        Texture player1;
+        Texture player2;
+        Texture dynamite;
+        Texture explosion;
+    } textures_;
+
+    struct
+    {
+        FMOD_SOUND* explosion;
+    } sounds_;
 
     struct
     {

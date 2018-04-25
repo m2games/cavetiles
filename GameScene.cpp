@@ -14,16 +14,17 @@ void Emitter::update(const float dt)
 {
     for(int i = 0; i < numActive; ++i)
     {
+        rects[i].pos.x += particles[i].vel.x * dt;
+        rects[i].pos.y += particles[i].vel.y * dt;
+        particles[i].life -= dt;
+
         if(particles[i].life <= 0.f)
         {
             particles[i] = particles[numActive - 1];
             rects[i] = rects[numActive - 1];
             --numActive;
+            --i;
         }
-
-        rects[i].pos.x += particles[i].vel.x * dt;
-        rects[i].pos.y += particles[i].vel.y * dt;
-        particles[i].life -= dt;
     }
 
     spawn.activeTime -= dt;
@@ -74,7 +75,10 @@ void Anim::update(const float dt)
         accumulator -= frameDt;
         ++idx;
         if(idx > numFrames - 1)
+        {
             idx = 0;
+            ended = true;
+        }
     }
 }
 
@@ -113,16 +117,18 @@ float dot(const vec2 v1, const vec2 v2)
 GameScene::GameScene()
 {
     glBuffers_ = createGLBuffers();
-    tileTexture_ = createTextureFromFile("res/tiles.png");
-    player1Texture_ = createTextureFromFile("res/player1.png");
-    player2Texture_ = createTextureFromFile("res/player2.png");
-    dynamiteTexture_ = createTextureFromFile("res/dynamite.png");
+
+    textures_.tile = createTextureFromFile("res/tiles.png");
+    textures_.player1 = createTextureFromFile("res/player1.png");
+    textures_.player2 = createTextureFromFile("res/player2.png");
+    textures_.dynamite = createTextureFromFile("res/dynamite.png");
+    textures_.explosion = createTextureFromFile("res/Explosion.png");
+
+    FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_various6.wav",
+                                    FMOD_CREATESAMPLE, nullptr, &sounds_.explosion) );
 
     emitter_.spawn.size = {5.f, 5.f};
-    emitter_.spawn.pos = {tileSize_ * (MapSize - 3) + (tileSize_ - emitter_.spawn.size.x)
-                          / 2.f,
-                          tileSize_ * (MapSize - 3) + (tileSize_ - emitter_.spawn.size.y)
-                          / 2.f};
+    emitter_.spawn.pos = {210.f, 210.f};
     emitter_.spawn.hz = 100.f;
     emitter_.particleRanges.life = {3.f, 6.f};
     emitter_.particleRanges.size = {0.25f, 2.f};
@@ -140,11 +146,11 @@ GameScene::GameScene()
 
     players_[0].pos = {tileSize_ * 1, tileSize_ * 1};
     players_[0].prevDir = Dir::Down;
-    players_[0].texture = &player1Texture_;
+    players_[0].texture = &textures_.player1;
 
     players_[1].pos = {tileSize_ * (MapSize - 2), tileSize_ * (MapSize - 2)};
     players_[1].prevDir = Dir::Left;
-    players_[1].texture = &player2Texture_;
+    players_[1].texture = &textures_.player2;
 
     // tightly coupled to the texture assets
     for(int i = Dir::Up; i < Dir::Count; ++i)
@@ -175,8 +181,8 @@ GameScene::GameScene()
     }
 
     // tilemap
+    // * edges
 
-    // edges
     for(int i = 0; i < MapSize; ++i)
     {
         tiles_[0][i] = 2;
@@ -185,7 +191,8 @@ GameScene::GameScene()
         tiles_[i][MapSize - 1] = 2;
     }
 
-    // pillars
+    // * pillars
+
     for(int i = 2; i < MapSize - 1; i += 2)
     {
         for(int j = 2; j < MapSize - 1; j += 2)
@@ -194,7 +201,8 @@ GameScene::GameScene()
         }
     }
 
-    // crates
+    // * crates
+
     int freeTiles[MapSize * MapSize];
     int numFreeTiles = 0;
 
@@ -236,40 +244,17 @@ end:;
         tiles_[0][tileIdx] = 1;
         numFreeTiles -= 1;
     }
-
-    // rects
-
-    for (int i = 0; i < MapSize; ++i)
-    {
-        for (int j = 0; j < MapSize; ++j)
-        {
-            Rect& rect = rects_[j + i * MapSize];
-            rect.pos = {j * tileSize_, i * tileSize_};
-            rect.size = {tileSize_, tileSize_};
-
-            switch (tiles_[i][j])
-            {
-                case 0: rect.texRect = {0.f, 0.f, 64.f, 64.f};   break;
-                case 1: rect.texRect = {64.f, 0.f, 64.f, 64.f};  break;
-                case 2: rect.texRect = {128.f, 0.f, 32.f, 32.f};
-                        rect.color = {0.25f, 0.25f, 0.25f, 1.f}; break;
-            }
-
-            rect.texRect.x /= tileTexture_.size.x;
-            rect.texRect.y /= tileTexture_.size.y;
-            rect.texRect.z /= tileTexture_.size.x;
-            rect.texRect.w /= tileTexture_.size.y;
-        }
-    }
 }
 
 GameScene::~GameScene()
 {
-    deleteTexture(player1Texture_);
-    deleteTexture(player2Texture_);
-    deleteTexture(tileTexture_);
-    deleteTexture(dynamiteTexture_);
     deleteGLBuffers(glBuffers_);
+    deleteTexture(textures_.tile);
+    deleteTexture(textures_.player1);
+    deleteTexture(textures_.player2);
+    deleteTexture(textures_.dynamite);
+    deleteTexture(textures_.explosion);
+    FCHECK( FMOD_Sound_Release(sounds_.explosion) );
 }
 
 void GameScene::processInput(const Array<WinEvent>& events)
@@ -277,7 +262,7 @@ void GameScene::processInput(const Array<WinEvent>& events)
     // @TODO(matiTechno): replace with 'gaffer on games' technique
     frame_.time = min(frame_.time, 0.033f);
 
-    for (const WinEvent& e: events)
+    for(const WinEvent& e: events)
     {
         if(e.type == WinEvent::Key && e.key.action != GLFW_REPEAT)
         {
@@ -295,13 +280,12 @@ void GameScene::processInput(const Array<WinEvent>& events)
                 case GLFW_KEY_DOWN:  keys_[1].down = on;  break;
                 case GLFW_KEY_LEFT:  keys_[1].left = on;  break;
                 case GLFW_KEY_RIGHT: keys_[1].right = on; break;
-                case GLFW_KEY_K:     keys_[1].drop = on;  break;
+                case GLFW_KEY_SPACE: keys_[1].drop = on;  break;
             }
         }
     }
 
     assert(getSize(players_) >= getSize(keys_));
-
     for(int i = 0; i < getSize(keys_); ++i)
     {
         if(players_[i].dir)
@@ -313,52 +297,95 @@ void GameScene::processInput(const Array<WinEvent>& events)
         else if(keys_[i].down)  players_[i].dir = Dir::Down;
         else                    players_[i].dir = Dir::Nil;
 
+        // @ what if we a player is on a dynamite?
         if     (keys_[i].drop && players_[i].dropCooldown <= 0.f)
         {
-            assert (numDynamites_ < getSize(dynamites_));
-            players_[i].isOnDynamite = true;
-            Dynamite& dynamite = dynamites_[numDynamites_];
-            dynamite.texture = &dynamiteTexture_;
+            players_[i].isOnDynamite = true; // @ BIG BUG
+            players_[i].dropCooldown = 1.f;
+            Dynamite dynamite;
             dynamite.tile = getPlayerTile(players_[i].pos, tileSize_);
-            dynamite.timer = 2.f;
-            ++numDynamites_;
-            players_[i].dropCooldown = 2.f;
+            dynamite.timer = 3.f;
+            dynamites_.pushBack(dynamite);
         }
 
-        keys_[i].drop = false;
+        keys_[i].drop = false; // @ hack?
     }
 }
 
 void GameScene::update()
 {
+    // * emitter
+
     emitter_.update(frame_.time);
 
-    for(int i = 0; i < numDynamites_; ++i)
+    // * explosions
+
+    for(int i = 0; i < explosions_.size(); ++i)
     {
-        if(dynamites_[i].timer <= 0.f)
+        Explosion& explo = explosions_[i];
+        explo.anim.update(frame_.time);
+
+        if(explo.anim.ended)
         {
-            for(int i = Dir::Up; i < Dir::Count; ++i)
+            explo = explosions_.back();
+            explosions_.popBack();
+            --i;
+        }
+    }
+
+    // *dynamites
+
+    for(int dynIdx = 0; dynIdx < dynamites_.size(); ++ dynIdx)
+    {
+        Dynamite& dynamite = dynamites_[dynIdx];
+        dynamite.timer -= frame_.time;
+
+        if(dynamite.timer <= 0.f)
+        {
+            for(int dirIdx = Dir::Up; dirIdx < Dir::Count; ++dirIdx)
             {
-                vec2 dir = dirVecs_[i];
-                for(int j = 1; j <= dynamites_[i].range; ++j)
+                vec2 dir = dirVecs_[dirIdx];
+                for(int step = 1; step <= dynamite.range; ++step)
                 {
-                    ivec2 tile = {dynamites_[i].tile.x + int(dir.x) * j, dynamites_[i].tile.y + int(dir.y) * j};
-                    if(tiles_[tile.y][tile.x] == 1)
+                    int i = dynamite.tile.x + int(dir.x) * step;
+                    int j = dynamite.tile.y + int(dir.y) * step;
+                    int& tile = tiles_[j][i];
+
+                    if(tile == 1)
                     {
-                        tiles_[tile.y][tile.x] = 0;
-                        break;
-                    } else if(tiles_[tile.y][tile.x] == 2)
-                    {
+                        tile = 0;
+
+                        Explosion explo;
+                        explo.size = tileSize_ * 2.f;
+                        explo.tile = {i, j};
+                        explo.anim.frameDt = 0.08f;
+                        explo.anim.numFrames = 12;
+
+                        for(int i = 0 ; i < explo.anim.numFrames; ++i)
+                            explo.anim.frames[i] = {i * 96.f, 0.f, 96.f, 96.f};
+
+                        explosions_.pushBack(explo);
+
+                        FMOD_CHANNEL* channel;
+                        FCHECK( FMOD_System_PlaySound(fmodSystem, sounds_.explosion, nullptr,
+                                                      false, &channel) );
+                        FCHECK( FMOD_Channel_SetVolume(channel, 0.2f) );
+
                         break;
                     }
+                    else if(tile == 2)
+                        break;
                 }
             }
-            --numDynamites_;
-            dynamites_[i] = dynamites_[numDynamites_];
+
+            dynamite = dynamites_.back();
+            dynamites_.popBack();
+            --dynIdx;
         }
 
-        dynamites_[i].timer -= frame_.time;
     }
+
+    // * players
 
     for(Player& player: players_)
     {
@@ -367,18 +394,28 @@ void GameScene::update()
         player.anims[player.dir].update(frame_.time);
         player.dropCooldown -= frame_.time;
 
+        // collisions
+
         const ivec2 playerTile = getPlayerTile(player.pos, tileSize_);
 
-        for(int i = 0; i < numDynamites_; ++i)
+        // * with dynamites
+        // @ BIG BUG
+
+        for(Dynamite& dynamite: dynamites_)
         {
-            if(!player.isOnDynamite && isCollision(player.pos, dynamites_[i].tile, tileSize_))
+            const bool collision = isCollision(player.pos, dynamite.tile, tileSize_);
+
+            if(!player.isOnDynamite && collision)
             {
                 player.pos = {playerTile.x * tileSize_, playerTile.y * tileSize_};
-            } else if (!isCollision(player.pos, dynamites_[i].tile, tileSize_))
+            }
+            else if(player.isOnDynamite && !collision)
             {
                 player.isOnDynamite = false;
             }
         }
+
+        // * with tiles
 
         bool collision = false;
 
@@ -463,44 +500,73 @@ void GameScene::render(const GLuint program)
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);
 
-    // 1) render the tilemap
+    // * tilemap
 
-    uniform1i(program, "mode", FragmentMode::Texture);
-    bindTexture(tileTexture_);
-    updateGLBuffers(glBuffers_, rects_, getSize(rects_));
-    renderGLBuffers(glBuffers_, getSize(rects_));
+    assert(MapSize * MapSize <= getSize(rects_));
 
-    // 2) render dynamites
-
-    Rect dRects[MaxDynamites];
-    for(int i = 0; i < numDynamites_; ++i)
+    for (int i = 0; i < MapSize; ++i)
     {
-        dRects[i].size = {tileSize_, tileSize_};
-        dRects[i].pos = {dynamites_[i].tile.x * tileSize_, dynamites_[i].tile.y * tileSize_};
-        dRects[i].texRect = {0.f, 0.f, 16.f, 16.f};
-        dRects[i].texRect.x /= dynamiteTexture_.size.x;
-        dRects[i].texRect.y /= dynamiteTexture_.size.y;
-        dRects[i].texRect.z /= dynamiteTexture_.size.x;
-        dRects[i].texRect.w /= dynamiteTexture_.size.y;
+        for (int j = 0; j < MapSize; ++j)
+        {
+            Rect& rect = rects_[j + i * MapSize];
+            rect.pos = {j * tileSize_, i * tileSize_};
+            rect.size = {tileSize_, tileSize_};
+
+            switch (tiles_[i][j])
+            {
+                case 0: rect.texRect = {0.f, 0.f, 64.f, 64.f};   break;
+                case 1: rect.texRect = {64.f, 0.f, 64.f, 64.f};  break;
+                case 2: rect.texRect = {128.f, 0.f, 32.f, 32.f};
+                        rect.color = {0.25f, 0.25f, 0.25f, 1.f}; break;
+            }
+
+            rect.texRect.x /= textures_.tile.size.x;
+            rect.texRect.y /= textures_.tile.size.y;
+            rect.texRect.z /= textures_.tile.size.x;
+            rect.texRect.w /= textures_.tile.size.y;
+        }
     }
 
     uniform1i(program, "mode", FragmentMode::Texture);
-    bindTexture(dynamiteTexture_);
-    updateGLBuffers(glBuffers_, dRects, numDynamites_);
-    renderGLBuffers(glBuffers_, numDynamites_);
+    bindTexture(textures_.tile);
+    updateGLBuffers(glBuffers_, rects_, getSize(rects_));
+    renderGLBuffers(glBuffers_, getSize(rects_));
 
-    // 3) render the players
+    // * dynamites
+
+    assert(dynamites_.size() <= getSize(rects_));
+
+    for(int i = 0; i < dynamites_.size(); ++i)
+    {
+        rects_[i].size = {tileSize_, tileSize_};
+        rects_[i].pos = {dynamites_[i].tile.x * tileSize_, dynamites_[i].tile.y * tileSize_};
+        // @ we have to reset the color (it might be modified by previous renderings)
+        rects_[i].color = {1.f, 1.f, 1.f, 1.f};
+        rects_[i].texRect = {0.f, 0.f, 16.f, 16.f};
+        rects_[i].texRect.x /= textures_.dynamite.size.x;
+        rects_[i].texRect.y /= textures_.dynamite.size.y;
+        rects_[i].texRect.z /= textures_.dynamite.size.x;
+        rects_[i].texRect.w /= textures_.dynamite.size.y;
+    }
+
+    uniform1i(program, "mode", FragmentMode::Texture);
+    bindTexture(textures_.dynamite);
+    updateGLBuffers(glBuffers_, rects_, dynamites_.size());
+    renderGLBuffers(glBuffers_, dynamites_.size());
+
+    // * players
 
     for(Player& player: players_)
     {
         Rect rect;
         rect.size = {tileSize_, tileSize_};
         rect.pos = player.pos;
+        rect.color = {1.f, 1.f, 1.f, 0.2f};
 
-        rect.color.w = 0.2f;
         uniform1i(program, "mode", FragmentMode::Color);
         updateGLBuffers(glBuffers_, &rect, 1);
         renderGLBuffers(glBuffers_, 1);
+
         rect.color.w = 1.f;
 
         const vec4 frame = player.dir ? player.anims[player.dir].getCurrentFrame() :
@@ -517,7 +583,31 @@ void GameScene::render(const GLuint program)
         renderGLBuffers(glBuffers_, 1);
     }
 
-    // 4) particles
+    // * explosions
+
+    assert(explosions_.size() <= getSize(rects_));
+
+    for(int i = 0; i < explosions_.size(); ++i)
+    {
+        rects_[i].size = {explosions_[i].size, explosions_[i].size};
+        rects_[i].pos = {explosions_[i].tile.x * tileSize_ + (tileSize_ - rects_[i].size.x)
+                                                           / 2.f,
+                         explosions_[i].tile.y * tileSize_ + (tileSize_ - rects_[i].size.y)
+                                                           / 2.f};
+        rects_[i].color = {1.f, 1.f, 1.f, 1.f};
+        rects_[i].texRect = explosions_[i].anim.getCurrentFrame();
+        rects_[i].texRect.x /= textures_.explosion.size.x;
+        rects_[i].texRect.y /= textures_.explosion.size.y;
+        rects_[i].texRect.z /= textures_.explosion.size.x;
+        rects_[i].texRect.w /= textures_.explosion.size.y;
+    }
+
+    uniform1i(program, "mode", FragmentMode::Texture);
+    bindTexture(textures_.explosion);
+    updateGLBuffers(glBuffers_, rects_, explosions_.size());
+    renderGLBuffers(glBuffers_, explosions_.size());
+
+    // * particles
 
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     uniform1i(program, "mode", FragmentMode::Color);
@@ -525,7 +615,7 @@ void GameScene::render(const GLuint program)
     renderGLBuffers(glBuffers_, emitter_.numActive);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // 5) imgui
+    // * imgui
 
     ImGui::ShowDemoWindow();
     ImGui::Begin("options");

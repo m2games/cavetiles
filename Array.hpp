@@ -35,6 +35,7 @@ public:
         }
     }
 
+    // @ not tested
     T& insert(int i, const T& val)
     {
         ++size_;
@@ -48,6 +49,7 @@ public:
         return data_[i];
     }
     
+    // @ not tested
     T& erase(int i)
     {
         memmove(data_ + i, data_ + i + 1, size_ - i - 1);
@@ -92,4 +94,38 @@ private:
         data_ = (T*)realloc(data_, capacity_ * sizeof(T));
         assert(data_);
     }
+};
+
+// does not respect constructors & destructors
+template<typename T, int N>
+class FixedArray
+{
+public:
+    void pushBack(const T& t)
+    {
+        assert(size_ < N);
+        data_[size_] = t;
+        ++size_;
+    }
+
+    void     clear()                 {size_ = 0;}
+    void     popBack()               {--size_;}
+    T&       operator[](int i)       {return data_[i];}
+    const T& operator[](int i) const {return data_[i];}
+    T*       begin()                 {return data_;}
+    const T* begin()           const {return data_;}
+    T*       end()                   {return data_ + size_;}
+    const T* end()             const {return data_ + size_;}
+    T&       front()                 {return *data_;}
+    const T& front()           const {return *data_;}
+    T&       back()                  {return data_[size_ - 1];}
+    const T& back()            const {return data_[size_ - 1];}
+    T*       data()                  {return data_;}
+    const T* data()            const {return data_;}
+    bool     empty()           const {return size_ == 0;}
+    int      size()            const {return size_;}
+
+private:
+    int size_ = 0;
+    T data_[N];
 };
