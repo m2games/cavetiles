@@ -3,6 +3,13 @@
 #include "GLFW/glfw3.h"
 #include <math.h>
 
+#define playSound(sound, volume) \
+{ \
+    FMOD_CHANNEL* channel; \
+    FCHECK( FMOD_System_PlaySound(fmodSystem, sound, nullptr, false, &channel) ); \
+    FCHECK( FMOD_Channel_SetVolume(channel, volume) ); \
+}
+
 void Emitter::reserve()
 {
     const int maxParticles = particleRanges.life.max * spawn.hz;
@@ -125,7 +132,10 @@ GameScene::GameScene()
     textures_.explosion = createTextureFromFile("res/Explosion.png");
 
     FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_various6.wav",
-                                    FMOD_CREATESAMPLE, nullptr, &sounds_.explosion) );
+                                    FMOD_CREATESAMPLE, nullptr, &sounds_.dynamite) );
+
+    FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_short_hard15.wav",
+                                    FMOD_CREATESAMPLE, nullptr, &sounds_.crateExplosion) );
 
     emitter_.spawn.size = {5.f, 5.f};
     emitter_.spawn.pos = {210.f, 210.f};
@@ -254,7 +264,8 @@ GameScene::~GameScene()
     deleteTexture(textures_.player2);
     deleteTexture(textures_.dynamite);
     deleteTexture(textures_.explosion);
-    FCHECK( FMOD_Sound_Release(sounds_.explosion) );
+    FCHECK( FMOD_Sound_Release(sounds_.dynamite) );
+    FCHECK( FMOD_Sound_Release(sounds_.crateExplosion) );
 }
 
 void GameScene::processInput(const Array<WinEvent>& events)
@@ -297,14 +308,14 @@ void GameScene::processInput(const Array<WinEvent>& events)
         else if(keys_[i].down)  players_[i].dir = Dir::Down;
         else                    players_[i].dir = Dir::Nil;
 
-        // @ what if we a player is on a dynamite?
+        // @TODO what if a player is on a dynamite?
         if     (keys_[i].drop && players_[i].dropCooldown <= 0.f)
         {
-            players_[i].isOnDynamite = true; // @ BIG BUG
-            players_[i].dropCooldown = 1.f;
+            players_[i].dropCooldown = 0.5f;
             Dynamite dynamite;
             dynamite.tile = getPlayerTile(players_[i].pos, tileSize_);
             dynamite.timer = 3.f;
+            dynamite.owner = &players_[i];
             dynamites_.pushBack(dynamite);
         }
 
@@ -365,12 +376,7 @@ void GameScene::update()
                             explo.anim.frames[i] = {i * 96.f, 0.f, 96.f, 96.f};
 
                         explosions_.pushBack(explo);
-
-                        FMOD_CHANNEL* channel;
-                        FCHECK( FMOD_System_PlaySound(fmodSystem, sounds_.explosion, nullptr,
-                                                      false, &channel) );
-                        FCHECK( FMOD_Channel_SetVolume(channel, 0.2f) );
-
+                        playSound(sounds_.crateExplosion, 0.2f);
                         break;
                     }
                     else if(tile == 2)
@@ -381,6 +387,7 @@ void GameScene::update()
             dynamite = dynamites_.back();
             dynamites_.popBack();
             --dynIdx;
+            playSound(sounds_.dynamite, 0.2f);
         }
 
     }
@@ -399,19 +406,17 @@ void GameScene::update()
         const ivec2 playerTile = getPlayerTile(player.pos, tileSize_);
 
         // * with dynamites
-        // @ BIG BUG
 
         for(Dynamite& dynamite: dynamites_)
         {
             const bool collision = isCollision(player.pos, dynamite.tile, tileSize_);
-
-            if(!player.isOnDynamite && collision)
+            if(collision && dynamite.owner != &player)
             {
                 player.pos = {playerTile.x * tileSize_, playerTile.y * tileSize_};
             }
-            else if(player.isOnDynamite && !collision)
+            else if(!collision && dynamite.owner == &player)
             {
-                player.isOnDynamite = false;
+                dynamite.owner = nullptr;
             }
         }
 

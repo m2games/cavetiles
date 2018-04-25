@@ -294,13 +294,6 @@ struct Dir
     };
 };
 
-struct Dynamite
-{
-    ivec2 tile;
-    int range = 2;
-    float timer;
-};
-
 struct Player
 {
     vec2 pos;
@@ -308,9 +301,16 @@ struct Player
     int dir = Dir::Nil;
     Texture* texture;
     Anim anims[Dir::Count];
-    bool isOnDynamite = false;
     int prevDir; // for animation only
     float dropCooldown = 0.f;
+};
+
+struct Dynamite
+{
+    ivec2 tile;
+    int range = 2;
+    float timer;
+    Player* owner;
 };
 
 class GameScene: public Scene
@@ -347,7 +347,8 @@ private:
 
     struct
     {
-        FMOD_SOUND* explosion;
+        FMOD_SOUND* dynamite;
+        FMOD_SOUND* crateExplosion;
     } sounds_;
 
     struct
