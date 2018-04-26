@@ -194,14 +194,9 @@ GameScene::GameScene()
     }
 
     // specific configuration for each player
-    assert(getSize(players_) >= 2);
+    assert(getSize(players_) == 2);
 
-    players_[0].pos = {tileSize_ * 1, tileSize_ * 1};
-    players_[0].prevDir = Dir::Down;
     players_[0].texture = &textures_.player1;
-
-    players_[1].pos = {tileSize_ * (MapSize - 2), tileSize_ * (MapSize - 2)};
-    players_[1].prevDir = Dir::Left;
     players_[1].texture = &textures_.player2;
 
     // tightly coupled to the texture assets
@@ -253,10 +248,52 @@ GameScene::GameScene()
         }
     }
 
+    setNewGame();
+}
+
+GameScene::~GameScene()
+{
+    deleteGLBuffers(glBuffers_);
+    deleteTexture(textures_.tile);
+    deleteTexture(textures_.player1);
+    deleteTexture(textures_.player2);
+    deleteTexture(textures_.dynamite);
+    deleteTexture(textures_.explosion);
+    FCHECK( FMOD_Sound_Release(sounds_.dynamite) );
+    FCHECK( FMOD_Sound_Release(sounds_.crateExplosion) );
+}
+
+void GameScene::setNewGame()
+{
+    dynamites_.clear();
+
+    for(Player& player: players_)
+    {
+        player.dropCooldown = 0.f;
+        player.hp = 3;
+    }
+
+    // specific configuration for each player
+    assert(getSize(players_) == 2);
+
+    players_[0].pos = {tileSize_ * 1, tileSize_ * 1};
+    players_[0].prevDir = Dir::Down;
+
+    players_[1].pos = {tileSize_ * (MapSize - 2), tileSize_ * (MapSize - 2)};
+    players_[1].prevDir = Dir::Left;
+
+    // tilemap
     // * crates
 
     int freeTiles[MapSize * MapSize];
     int numFreeTiles = 0;
+
+    // delete crates from previous game
+    for(int i = 0; i < MapSize * MapSize; ++i)
+    {
+        if(tiles_[0][i] == 1)
+            tiles_[0][i] = 0;
+    }
 
     for(int i = 0; i < MapSize * MapSize; ++i)
     {
@@ -298,20 +335,27 @@ end:;
     }
 }
 
-GameScene::~GameScene()
-{
-    deleteGLBuffers(glBuffers_);
-    deleteTexture(textures_.tile);
-    deleteTexture(textures_.player1);
-    deleteTexture(textures_.player2);
-    deleteTexture(textures_.dynamite);
-    deleteTexture(textures_.explosion);
-    FCHECK( FMOD_Sound_Release(sounds_.dynamite) );
-    FCHECK( FMOD_Sound_Release(sounds_.crateExplosion) );
-}
-
 void GameScene::processInput(const Array<WinEvent>& events)
 {
+    timeToStart_ -= frame_.time;
+
+    int numLosers = 0;
+
+    for(const Player& player: players_)
+        numLosers += (player.hp == 0);
+
+    if(numLosers >= getSize(players_) - 1)
+    {
+        for(Player& player: players_)
+            player.gameScore += player.hp > 0;
+
+        timeToStart_ = 2.f;
+        setNewGame();
+    }
+
+    if(timeToStart_ > 0.f)
+        return;
+
     // @TODO(matiTechno): replace with 'gaffer on games' technique
     frame_.time = min(frame_.time, 0.033f);
 
@@ -415,6 +459,15 @@ void GameScene::update()
 
         if(dynamite.timer <= 0.f)
         {
+            for(Player& player: players_)
+            {
+                const ivec2 playerTile = getPlayerTile(player, tileSize_);
+
+                if(playerTile.x == dynamite.tile.x && playerTile.y == dynamite.tile.y &&
+                   player.hp)
+                    player.hp -= 1;
+            }
+
             for(int dirIdx = Dir::Up; dirIdx < Dir::Count; ++dirIdx)
             {
                 vec2 dir = dirVecs_[dirIdx];
@@ -454,6 +507,16 @@ void GameScene::update()
                                 // explode in the near future
                                 dynamite.timer = min(dynamite.timer, 0.1f);
                             }
+                        }
+
+                        // @ code duplication
+                        for(Player& player: players_)
+                        {
+                            const ivec2 playerTile = getPlayerTile(player, tileSize_);
+
+                            if(playerTile.x == x && playerTile.y && playerTile.y == y &&
+                               player.hp)
+                                player.hp -= 1;
                         }
                     }
                 }

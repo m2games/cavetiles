@@ -302,7 +302,9 @@ struct Player
     Texture* texture;
     Anim anims[Dir::Count];
     int prevDir; // for animation only
-    float dropCooldown = 0.f;
+    float dropCooldown;
+    int hp;
+    int gameScore = 0;
 };
 
 struct Dynamite
@@ -328,6 +330,8 @@ public:
     void render(GLuint program) override;
 
 private:
+    void setNewGame();
+
     enum {MapSize = 15};
     const float tileSize_ = 20.f;
 
@@ -340,8 +344,8 @@ private:
     FixedArray<Explosion, 50> explosions_;
     vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     Emitter emitter_;
+    float timeToStart_ = 0.f;
 
-    // @TODO(matiTechno): we need to think about hashmaps
     struct
     {
         Texture tile;

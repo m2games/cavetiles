@@ -108,6 +108,7 @@ public:
         ++size_;
     }
 
+    int      maxSize()         const {return N;}
     void     clear()                 {size_ = 0;}
     void     popBack()               {--size_;}
     T&       operator[](int i)       {return data_[i];}
