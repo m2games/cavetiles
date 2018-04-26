@@ -690,7 +690,7 @@ public:
             text.color = {1.f, 0.5f, 1.f, 1.f};
             text.str = "press ENTER / ESC / SPACE to skip";
 
-            int count = writeTextToBuffer(text, font_, rects, getSize(rects));
+            const int count = writeTextToBuffer(text, font_, rects, getSize(rects));
             updateGLBuffers(glBuffers_, rects, count);
 
             uniform2f(program, "cameraPos", 0.f, 0.f);

@@ -304,7 +304,7 @@ struct Player
     int prevDir; // for animation only
     float dropCooldown;
     int hp;
-    int gameScore = 0;
+    int score = 0;
 };
 
 struct Dynamite
@@ -332,7 +332,7 @@ public:
 private:
     void setNewGame();
 
-    enum {MapSize = 15};
+    enum {MapSize = 13};
     const float tileSize_ = 20.f;
 
     GLBuffers glBuffers_;
@@ -345,6 +345,7 @@ private:
     vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     Emitter emitter_;
     float timeToStart_ = 0.f;
+    Font font_;
 
     struct
     {

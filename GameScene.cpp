@@ -2,6 +2,7 @@
 #include "imgui/imgui.h"
 #include "GLFW/glfw3.h"
 #include <math.h>
+#include <stdio.h>
 
 void Dynamite::addPlayer(const Player& player)
 {
@@ -160,12 +161,16 @@ float dot(const vec2 v1, const vec2 v2)
 
 GameScene::GameScene()
 {
+    assert(MapSize % 2);
+
     {
         Dynamite dynamite;
         assert(getSize(dynamite.players) == getSize(players_));
     }
 
     glBuffers_ = createGLBuffers();
+
+    font_ = createFontFromFile("res/Exo2-Black.otf", 38, 512);
 
     textures_.tile = createTextureFromFile("res/tiles.png");
     textures_.player1 = createTextureFromFile("res/player1.png");
@@ -181,6 +186,7 @@ GameScene::GameScene()
 
     emitter_.spawn.size = {5.f, 5.f};
     emitter_.spawn.pos = {210.f, 210.f};
+    assert(emitter_.spawn.pos.x <= (MapSize - 1) * tileSize_);
     emitter_.spawn.hz = 100.f;
     emitter_.particleRanges.life = {3.f, 6.f};
     emitter_.particleRanges.size = {0.25f, 2.f};
@@ -254,6 +260,7 @@ GameScene::GameScene()
 GameScene::~GameScene()
 {
     deleteGLBuffers(glBuffers_);
+    deleteFont(font_);
     deleteTexture(textures_.tile);
     deleteTexture(textures_.player1);
     deleteTexture(textures_.player2);
@@ -347,7 +354,7 @@ void GameScene::processInput(const Array<WinEvent>& events)
     if(numLosers >= getSize(players_) - 1)
     {
         for(Player& player: players_)
-            player.gameScore += player.hp > 0;
+            player.score += player.hp > 0;
 
         timeToStart_ = 2.f;
         setNewGame();
@@ -653,7 +660,7 @@ void GameScene::render(const GLuint program)
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);
 
-    // * tilemap
+    // tilemap
 
     assert(MapSize * MapSize <= getSize(rects_));
 
@@ -664,6 +671,7 @@ void GameScene::render(const GLuint program)
             Rect& rect = rects_[j + i * MapSize];
             rect.pos = {j * tileSize_, i * tileSize_};
             rect.size = {tileSize_, tileSize_};
+            rect.color = {1.f, 1.f, 1.f, 1.f};
 
             switch (tiles_[i][j])
             {
@@ -685,7 +693,7 @@ void GameScene::render(const GLuint program)
     updateGLBuffers(glBuffers_, rects_, getSize(rects_));
     renderGLBuffers(glBuffers_, getSize(rects_));
 
-    // * dynamites
+    // dynamites
 
     assert(dynamites_.size() <= getSize(rects_));
 
@@ -693,7 +701,7 @@ void GameScene::render(const GLuint program)
     {
         rects_[i].size = {tileSize_, tileSize_};
         rects_[i].pos = {dynamites_[i].tile.x * tileSize_, dynamites_[i].tile.y * tileSize_};
-        // @ we have to reset color and texRect
+        // @
         rects_[i].color = {1.f, 1.f, 1.f, 1.f};
         rects_[i].texRect = {0.f, 0.f, 1.f, 1.f};
     }
@@ -703,7 +711,7 @@ void GameScene::render(const GLuint program)
     updateGLBuffers(glBuffers_, rects_, dynamites_.size());
     renderGLBuffers(glBuffers_, dynamites_.size());
 
-    // * players
+    // players
 
     for(Player& player: players_)
     {
@@ -732,7 +740,7 @@ void GameScene::render(const GLuint program)
         renderGLBuffers(glBuffers_, 1);
     }
 
-    // * explosions
+    // explosions
 
     assert(explosions_.size() <= getSize(rects_));
 
@@ -756,7 +764,7 @@ void GameScene::render(const GLuint program)
     updateGLBuffers(glBuffers_, rects_, explosions_.size());
     renderGLBuffers(glBuffers_, explosions_.size());
 
-    // * particles
+    // particles
 
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     uniform1i(program, "mode", FragmentMode::Color);
@@ -764,7 +772,42 @@ void GameScene::render(const GLuint program)
     renderGLBuffers(glBuffers_, emitter_.numActive);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // * imgui
+    // ui text
+
+    uniform1i(program, "mode", FragmentMode::Font);
+    bindTexture(font_.texture);
+
+    const float offsetX = 5.f;
+    int count = 0;
+    char buffer[20];
+    Text text;
+    text.str = buffer;
+    text.scale = 0.35f;
+
+    assert(getSize(players_) == 2);
+
+    // * player 1 hp
+    snprintf(buffer, getSize(buffer), "hp: %d", players_[0].hp);
+    text.pos = {offsetX, 2.f};
+    text.color = {1.f, 0.6f, 0.15f, 0.7f};
+    count += writeTextToBuffer(text, font_, rects_, getSize(rects_));
+
+    // * player 2 hp
+    snprintf(buffer, getSize(buffer), "hp: %d", players_[1].hp);
+    text.color = {1.f, 1.f, 1.f, 0.7f};
+    text.pos.x = MapSize * tileSize_ - getTextSize(text, font_).x - offsetX;
+    count += writeTextToBuffer(text, font_, rects_ + count, getSize(rects_) - count);
+
+    // * score
+    snprintf(buffer, getSize(buffer), "%d : %d", players_[0].score, players_[1].score);
+    text.color = {0.5f, 1.f, 0.5f, 0.7f};
+    text.pos.x = (MapSize * tileSize_ - getTextSize(text, font_).x) / 2.f;
+    count += writeTextToBuffer(text, font_, rects_ + count, getSize(rects_) - count);
+
+    updateGLBuffers(glBuffers_, rects_, count);
+    renderGLBuffers(glBuffers_, count);
+
+    // imgui
 
     ImGui::ShowDemoWindow();
     ImGui::Begin("options");
