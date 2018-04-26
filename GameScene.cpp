@@ -3,11 +3,48 @@
 #include "GLFW/glfw3.h"
 #include <math.h>
 
-#define playSound(sound, volume) \
-{ \
-    FMOD_CHANNEL* channel; \
-    FCHECK( FMOD_System_PlaySound(fmodSystem, sound, nullptr, false, &channel) ); \
-    FCHECK( FMOD_Channel_SetVolume(channel, volume) ); \
+void Dynamite::addPlayer(const Player& player)
+{
+    for(const Player*& p: players)
+    {
+        assert(p != &player);
+        if(p == nullptr)
+        {
+            p = &player;
+            return;
+        }
+    }
+    assert(false);
+}
+
+void Dynamite::removePlayer(const Player& player)
+{
+    for(const Player*& p: players)
+    {
+        if(p == &player)
+        {
+            p = nullptr;
+            return;
+        }
+    }
+    assert(false);
+}
+
+bool Dynamite::findPlayer(const Player& player) const
+{
+    for(const Player* const p: players)
+    {
+        if(p == &player)
+            return true;
+    }
+    return false;
+}
+
+void playSound(FMOD_SOUND* const sound, float volume)
+{
+    FMOD_CHANNEL* channel;
+    FCHECK( FMOD_System_PlaySound(fmodSystem, sound, nullptr, false, &channel) );
+    FCHECK( FMOD_Channel_SetVolume(channel, volume) );
 }
 
 void Emitter::reserve()
@@ -89,10 +126,10 @@ void Anim::update(const float dt)
     }
 }
 
-ivec2 getPlayerTile(const vec2 playerPos, const float tileSize)
+ivec2 getPlayerTile(const Player& player, const float tileSize)
 {
-    return {int(playerPos.x / tileSize + 0.5f),
-            int(playerPos.y / tileSize + 0.5f)};
+    return {int(player.pos.x / tileSize + 0.5f),
+            int(player.pos.y / tileSize + 0.5f)};
 }
 
 bool isCollision(const vec2 playerPos, const ivec2 tile, const float tileSize)
@@ -123,12 +160,17 @@ float dot(const vec2 v1, const vec2 v2)
 
 GameScene::GameScene()
 {
+    {
+        Dynamite dynamite;
+        assert(getSize(dynamite.players) == getSize(players_));
+    }
+
     glBuffers_ = createGLBuffers();
 
     textures_.tile = createTextureFromFile("res/tiles.png");
     textures_.player1 = createTextureFromFile("res/player1.png");
     textures_.player2 = createTextureFromFile("res/player2.png");
-    textures_.dynamite = createTextureFromFile("res/dynamite.png");
+    textures_.dynamite = createTextureFromFile("res/bomb000.png");
     textures_.explosion = createTextureFromFile("res/Explosion.png");
 
     FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_various6.wav",
@@ -226,7 +268,7 @@ GameScene::GameScene()
 
             for(const Player& player: players_)
             {
-                const ivec2 playerTile = getPlayerTile(player.pos, tileSize_);
+                const ivec2 playerTile = getPlayerTile(player, tileSize_);
 
                 for(int k = -1; k < 2; ++k)
                 {
@@ -308,18 +350,38 @@ void GameScene::processInput(const Array<WinEvent>& events)
         else if(keys_[i].down)  players_[i].dir = Dir::Down;
         else                    players_[i].dir = Dir::Nil;
 
-        // @TODO what if a player is on a dynamite?
-        if     (keys_[i].drop && players_[i].dropCooldown <= 0.f)
+        if(keys_[i].drop)
         {
-            players_[i].dropCooldown = 0.5f;
-            Dynamite dynamite;
-            dynamite.tile = getPlayerTile(players_[i].pos, tileSize_);
-            dynamite.timer = 3.f;
-            dynamite.owner = &players_[i];
-            dynamites_.pushBack(dynamite);
-        }
+            keys_[i].drop = false;
 
-        keys_[i].drop = false; // @ hack?
+            const ivec2 targetTile = getPlayerTile(players_[i], tileSize_);
+            bool freeTile = true;
+
+            for(const Dynamite& dynamite: dynamites_)
+            {
+                if(dynamite.tile.x == targetTile.x && dynamite.tile.y == targetTile.y)
+                {
+                    freeTile = false;
+                    break;
+                }
+            }
+
+            if(freeTile && players_[i].dropCooldown <= 0.f)
+            {
+                players_[i].dropCooldown = 0.5f;
+                Dynamite dynamite;
+                dynamite.tile = targetTile;
+                dynamite.timer = 3.f;
+
+                for(const Player& player: players_)
+                {
+                    if(isCollision(player.pos, targetTile, tileSize_))
+                        dynamite.addPlayer(player);
+                }
+
+                dynamites_.pushBack(dynamite);
+            }
+        }
     }
 }
 
@@ -403,20 +465,29 @@ void GameScene::update()
 
         // collisions
 
-        const ivec2 playerTile = getPlayerTile(player.pos, tileSize_);
+        const ivec2 playerTile = getPlayerTile(player, tileSize_);
 
         // * with dynamites
 
         for(Dynamite& dynamite: dynamites_)
         {
             const bool collision = isCollision(player.pos, dynamite.tile, tileSize_);
-            if(collision && dynamite.owner != &player)
+            const bool allowed = dynamite.findPlayer(player);
+
+            if(collision && !allowed)
             {
-                player.pos = {playerTile.x * tileSize_, playerTile.y * tileSize_};
+                if(player.dir == Dir::Left || player.dir == Dir::Right)
+                {
+                    player.pos.x = playerTile.x * tileSize_;
+                }
+                else
+                {
+                    player.pos.y = playerTile.y * tileSize_;
+                }
             }
-            else if(!collision && dynamite.owner == &player)
+            else if(!collision && allowed)
             {
-                dynamite.owner = nullptr;
+                dynamite.removePlayer(player);
             }
         }
 
@@ -545,13 +616,9 @@ void GameScene::render(const GLuint program)
     {
         rects_[i].size = {tileSize_, tileSize_};
         rects_[i].pos = {dynamites_[i].tile.x * tileSize_, dynamites_[i].tile.y * tileSize_};
-        // @ we have to reset the color (it might be modified by previous renderings)
+        // @ we have to reset color and texRect
         rects_[i].color = {1.f, 1.f, 1.f, 1.f};
-        rects_[i].texRect = {0.f, 0.f, 16.f, 16.f};
-        rects_[i].texRect.x /= textures_.dynamite.size.x;
-        rects_[i].texRect.y /= textures_.dynamite.size.y;
-        rects_[i].texRect.z /= textures_.dynamite.size.x;
-        rects_[i].texRect.w /= textures_.dynamite.size.y;
+        rects_[i].texRect = {0.f, 0.f, 1.f, 1.f};
     }
 
     uniform1i(program, "mode", FragmentMode::Texture);

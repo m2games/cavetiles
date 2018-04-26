@@ -307,10 +307,15 @@ struct Player
 
 struct Dynamite
 {
+    void addPlayer(const Player& player);
+    void removePlayer(const Player& player);
+    bool findPlayer(const Player& player) const;
+
     ivec2 tile;
     int range = 2;
     float timer;
-    Player* owner;
+    // players allowed to stand on a dynamite (used for resolving collisions)
+    const Player* players[2] = {}; // initialized to 0
 };
 
 class GameScene: public Scene
