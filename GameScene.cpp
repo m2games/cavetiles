@@ -278,6 +278,8 @@ void GameScene::setNewGame()
     {
         player.dropCooldown = 0.f;
         player.hp = 3;
+        // so player.prevDir won't be overwritten in processInput()
+        player.dir = Dir::Nil;
     }
 
     // specific configuration for each player
@@ -360,8 +362,7 @@ void GameScene::processInput(const Array<WinEvent>& events)
         setNewGame();
     }
 
-    if(timeToStart_ > 0.f)
-        return;
+    const bool allowAction = timeToStart_ <= 0.f;
 
     // @TODO(matiTechno): replace with 'gaffer on games' technique
     frame_.time = min(frame_.time, 0.033f);
@@ -374,37 +375,35 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
             switch(e.key.key)
             {
-                case GLFW_KEY_W:     keys_[0].up = on;    break;
-                case GLFW_KEY_S:     keys_[0].down = on;  break;
-                case GLFW_KEY_A:     keys_[0].left = on;  break;
-                case GLFW_KEY_D:     keys_[0].right = on; break;
-                case GLFW_KEY_C:     keys_[0].drop = on;  break;
+                case GLFW_KEY_W:     actions_[0].up    = on; break;
+                case GLFW_KEY_S:     actions_[0].down  = on; break;
+                case GLFW_KEY_A:     actions_[0].left  = on; break;
+                case GLFW_KEY_D:     actions_[0].right = on; break;
+                case GLFW_KEY_C:     actions_[0].drop  = on; break;
 
-                case GLFW_KEY_UP:    keys_[1].up = on;    break;
-                case GLFW_KEY_DOWN:  keys_[1].down = on;  break;
-                case GLFW_KEY_LEFT:  keys_[1].left = on;  break;
-                case GLFW_KEY_RIGHT: keys_[1].right = on; break;
-                case GLFW_KEY_SPACE: keys_[1].drop = on;  break;
+                case GLFW_KEY_UP:    actions_[1].up    = on; break;
+                case GLFW_KEY_DOWN:  actions_[1].down  = on; break;
+                case GLFW_KEY_LEFT:  actions_[1].left  = on; break;
+                case GLFW_KEY_RIGHT: actions_[1].right = on; break;
+                case GLFW_KEY_SPACE: actions_[1].drop  = on; break;
             }
         }
     }
 
-    assert(getSize(players_) >= getSize(keys_));
-    for(int i = 0; i < getSize(keys_); ++i)
+    assert(getSize(players_) >= getSize(actions_));
+    for(int i = 0; i < getSize(actions_); ++i)
     {
         if(players_[i].dir)
             players_[i].prevDir = players_[i].dir;
 
-        if     (keys_[i].left)  players_[i].dir = Dir::Left;
-        else if(keys_[i].right) players_[i].dir = Dir::Right;
-        else if(keys_[i].up)    players_[i].dir = Dir::Up;
-        else if(keys_[i].down)  players_[i].dir = Dir::Down;
-        else                    players_[i].dir = Dir::Nil;
+        if     (actions_[i].left  && allowAction) players_[i].dir = Dir::Left;
+        else if(actions_[i].right && allowAction) players_[i].dir = Dir::Right;
+        else if(actions_[i].up    && allowAction) players_[i].dir = Dir::Up;
+        else if(actions_[i].down  && allowAction) players_[i].dir = Dir::Down;
+        else                                      players_[i].dir = Dir::Nil;
 
-        if(keys_[i].drop)
+        if(actions_[i].drop && allowAction)
         {
-            keys_[i].drop = false;
-
             const ivec2 targetTile = getPlayerTile(players_[i], tileSize_);
             bool freeTile = true;
 
@@ -433,6 +432,8 @@ void GameScene::processInput(const Array<WinEvent>& events)
                 dynamites_.pushBack(dynamite);
             }
         }
+
+        actions_[i].drop = false;
     }
 }
 

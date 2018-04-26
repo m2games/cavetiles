@@ -362,12 +362,12 @@ private:
         FMOD_SOUND* crateExplosion;
     } sounds_;
 
-    struct
+    struct Action
     {
         bool up = false;
         bool down = false;
         bool left = false;
         bool right = false;
         bool drop = false;
-    } keys_[2];
+    } actions_[2];
 };
