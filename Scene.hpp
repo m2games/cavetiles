@@ -333,6 +333,7 @@ private:
 
     GLBuffers glBuffers_;
     Rect rects_[MapSize * MapSize];
+    // @ store dynamites information in the tile table? (bit flags?)
     int tiles_[MapSize][MapSize] = {}; // initialized to 0
     Player players_[2];
     FixedArray<Dynamite, 50> dynamites_;

@@ -406,9 +406,9 @@ void GameScene::update()
         }
     }
 
-    // *dynamites
+    // * dynamites
 
-    for(int dynIdx = 0; dynIdx < dynamites_.size(); ++ dynIdx)
+    for(int dynIdx = 0; dynIdx < dynamites_.size(); ++dynIdx)
     {
         Dynamite& dynamite = dynamites_[dynIdx];
         dynamite.timer -= frame_.time;
@@ -420,29 +420,42 @@ void GameScene::update()
                 vec2 dir = dirVecs_[dirIdx];
                 for(int step = 1; step <= dynamite.range; ++step)
                 {
-                    int i = dynamite.tile.x + int(dir.x) * step;
-                    int j = dynamite.tile.y + int(dir.y) * step;
-                    int& tile = tiles_[j][i];
+                    int x = dynamite.tile.x + int(dir.x) * step;
+                    int y = dynamite.tile.y + int(dir.y) * step;
+                    int& tile = tiles_[y][x];
 
-                    if(tile == 1)
+                    if(tile == 2)
+                        break;
+
+                    else if(tile == 1)
                     {
                         tile = 0;
 
                         Explosion explo;
                         explo.size = tileSize_ * 2.f;
-                        explo.tile = {i, j};
+                        explo.tile = {x, y};
                         explo.anim.frameDt = 0.08f;
                         explo.anim.numFrames = 12;
 
-                        for(int i = 0 ; i < explo.anim.numFrames; ++i)
+                        for(int i = 0; i < explo.anim.numFrames; ++i)
                             explo.anim.frames[i] = {i * 96.f, 0.f, 96.f, 96.f};
 
                         explosions_.pushBack(explo);
                         playSound(sounds_.crateExplosion, 0.2f);
                         break;
                     }
-                    else if(tile == 2)
-                        break;
+                    else // tile == 0
+                    {
+                        // @ shadowing
+                        for(Dynamite& dynamite: dynamites_)
+                        {
+                            if(dynamite.tile.x == x && dynamite.tile.y == y)
+                            {
+                                // explode in the near future
+                                dynamite.timer = min(dynamite.timer, 0.1f);
+                            }
+                        }
+                    }
                 }
             }
 
@@ -464,6 +477,7 @@ void GameScene::update()
         player.dropCooldown -= frame_.time;
 
         // collisions
+        // @TODO(matiTechno): unify collision code for tiles and dynamites?
 
         const ivec2 playerTile = getPlayerTile(player, tileSize_);
 
