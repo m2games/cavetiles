@@ -279,6 +279,7 @@ struct Explosion
     Anim anim;
     ivec2 tile;
     float size;
+    vec4 color = {1.f, 1.f, 1.f, 1.f};
 };
 
 struct Dir
@@ -296,8 +297,6 @@ struct Dir
 
 struct Player
 {
-    void takeDmg();
-
     vec2 pos;
     float vel;
     int dir = Dir::Nil;

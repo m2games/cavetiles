@@ -4,10 +4,17 @@
 #include <math.h>
 #include <stdio.h>
 
-void Player::takeDmg()
+// copuled to the explosion texture asset
+Anim createExplosionAnim()
 {
-    --hp;
-    dmgTimer = 1.f;
+    Anim anim;
+    anim.frameDt = 0.08f;
+    anim.numFrames = 12;
+
+    for(int i = 0; i < anim.numFrames; ++i)
+        anim.frames[i] = {i * 96.f, 0.f, 96.f, 96.f};
+
+    return anim;
 }
 
 void Dynamite::addPlayer(const Player& player)
@@ -477,77 +484,85 @@ void GameScene::update()
         Dynamite& dynamite = dynamites_[dynIdx];
         dynamite.timer -= frame_.time;
 
-        if(dynamite.timer <= 0.f)
+        if(dynamite.timer > 0.f)
+            continue;
+
+        for(int dirIdx = Dir::Nil; dirIdx < Dir::Count; ++dirIdx)
         {
-            for(Player& player: players_)
-            {
-                const ivec2 playerTile = getPlayerTile(player, tileSize_);
+            const vec2 dir = dirVecs_[dirIdx];
+            const int range = (dirIdx != Dir::Nil) ? dynamite.range : 1;
 
-                if(playerTile.x == dynamite.tile.x && playerTile.y == dynamite.tile.y &&
-                   player.hp)
-                    player.takeDmg();
-            }
-
-            for(int dirIdx = Dir::Up; dirIdx < Dir::Count; ++dirIdx)
+            for(int step = 1; step <= range; ++step)
             {
-                vec2 dir = dirVecs_[dirIdx];
-                for(int step = 1; step <= dynamite.range; ++step)
+                const int x = dynamite.tile.x + int(dir.x) * step;
+                const int y = dynamite.tile.y + int(dir.y) * step;
+                int& tileValue = tiles_[y][x];
+
+                if(tileValue == 2)
+                    break;
+
+                else if(tileValue == 1)
                 {
-                    int x = dynamite.tile.x + int(dir.x) * step;
-                    int y = dynamite.tile.y + int(dir.y) * step;
-                    int& tile = tiles_[y][x];
+                    tileValue = 0;
 
-                    if(tile == 2)
-                        break;
+                    Explosion e;
+                    e.anim = createExplosionAnim();
+                    e.tile = {x, y};
+                    e.size = tileSize_ * 2.f;
+                    explosions_.pushBack(e);
 
-                    else if(tile == 1)
+                    playSound(sounds_.crateExplosion, 0.2f);
+                    break;
+                }
+                else
+                {
+                    // @ shadowing
+                    for(Dynamite& dynamite: dynamites_)
                     {
-                        tile = 0;
-
-                        Explosion explo;
-                        explo.size = tileSize_ * 2.f;
-                        explo.tile = {x, y};
-                        explo.anim.frameDt = 0.08f;
-                        explo.anim.numFrames = 12;
-
-                        for(int i = 0; i < explo.anim.numFrames; ++i)
-                            explo.anim.frames[i] = {i * 96.f, 0.f, 96.f, 96.f};
-
-                        explosions_.pushBack(explo);
-                        playSound(sounds_.crateExplosion, 0.2f);
-                        break;
-                    }
-                    else // tile == 0
-                    {
-                        // @ shadowing
-                        for(Dynamite& dynamite: dynamites_)
+                        if(dynamite.tile.x == x && dynamite.tile.y == y)
                         {
-                            if(dynamite.tile.x == x && dynamite.tile.y == y)
-                            {
-                                // explode in the near future
-                                dynamite.timer = min(dynamite.timer, 0.1f);
-                            }
-                        }
-
-                        // @ code duplication
-                        for(Player& player: players_)
-                        {
-                            const ivec2 playerTile = getPlayerTile(player, tileSize_);
-
-                            if(playerTile.x == x && playerTile.y && playerTile.y == y &&
-                               player.hp)
-                                player.takeDmg();
+                            // explode in the near future
+                            dynamite.timer = min(dynamite.timer, 0.1f);
                         }
                     }
+
+                    bool hit = false;
+                    for(Player& player: players_)
+                    {
+                        const ivec2 playerTile = getPlayerTile(player, tileSize_);
+
+                        if(playerTile.x == x && playerTile.y && playerTile.y == y && player.hp)
+                        {
+                            player.hp -= 1;
+                            player.dmgTimer = 1.2f;
+                            hit = true;
+                        }
+                    }
+
+                    Explosion e;
+                    e.anim = createExplosionAnim();
+                    e.tile = {x, y};
+
+                    if(hit)
+                    {
+                        e.size = tileSize_ * 2.f;
+                        e.color = {1.f, 0.5f, 0.5f, 0.6f};
+                    }
+                    else
+                    {
+                        e.size = tileSize_ * 3.f;
+                        e.anim.frameDt *= 1.5f;
+                        e.color = {0.1f, 0.1f, 0.1f, 0.2f};
+                    }
+
+                    explosions_.pushBack(e);
                 }
             }
-
-            dynamite = dynamites_.back();
-            dynamites_.popBack();
-            --dynIdx;
-            playSound(sounds_.dynamite, 0.2f);
         }
-
+        dynamite = dynamites_.back();
+        dynamites_.popBack();
+        --dynIdx;
+        playSound(sounds_.dynamite, 0.2f);
     }
 
     // players
@@ -778,7 +793,7 @@ void GameScene::render(const GLuint program)
                                                            / 2.f,
                          explosions_[i].tile.y * tileSize_ + (tileSize_ - rects_[i].size.y)
                                                            / 2.f};
-        rects_[i].color = {1.f, 1.f, 1.f, 1.f};
+        rects_[i].color = explosions_[i].color;
         rects_[i].texRect = explosions_[i].anim.getCurrentFrame();
         rects_[i].texRect.x /= textures_.explosion.size.x;
         rects_[i].texRect.y /= textures_.explosion.size.y;
@@ -923,14 +938,11 @@ void GameScene::render(const GLuint program)
     ImGui::Spacing();
     ImGui::Text("controls:\n"
                 "\n"
-                "Esc - display score\n"
+                "Esc       - display score\n"
                 "\n"
                 "player1:\n"
-                "   W - move up\n"
-                "   S - move down\n"
-                "   A - move left\n"
-                "   D - move right\n"
-                "   C - drop dynamite\n"
+                "   WSAD   - move\n"
+                "   C      - drop dynamite\n"
                 "\n"
                 "player2:\n"
                 "   ARROWS - move\n"
