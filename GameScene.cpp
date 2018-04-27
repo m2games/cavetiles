@@ -4,6 +4,12 @@
 #include <math.h>
 #include <stdio.h>
 
+void Player::takeDmg()
+{
+    --hp;
+    dmgTimer = 1.f;
+}
+
 void Dynamite::addPlayer(const Player& player)
 {
     for(const Player*& p: players)
@@ -479,10 +485,7 @@ void GameScene::update()
 
                 if(playerTile.x == dynamite.tile.x && playerTile.y == dynamite.tile.y &&
                    player.hp)
-                {
-                    player.hp -= 1;
-                    player.dmgTimer = 1.f;
-                }
+                    player.takeDmg();
             }
 
             for(int dirIdx = Dir::Up; dirIdx < Dir::Count; ++dirIdx)
@@ -533,10 +536,7 @@ void GameScene::update()
 
                             if(playerTile.x == x && playerTile.y && playerTile.y == y &&
                                player.hp)
-                            {
-                                player.hp -= 1;
-                                player.dmgTimer = 1.f;
-                            }
+                                player.takeDmg();
                         }
                     }
                 }

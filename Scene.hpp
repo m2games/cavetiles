@@ -296,6 +296,8 @@ struct Dir
 
 struct Player
 {
+    void takeDmg();
+
     vec2 pos;
     float vel;
     int dir = Dir::Nil;
