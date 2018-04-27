@@ -707,11 +707,19 @@ void GameScene::render(const GLuint program)
 
     for(int i = 0; i < dynamites_.size(); ++i)
     {
-        rects_[i].size = {tileSize_, tileSize_};
-        rects_[i].pos = {dynamites_[i].tile.x * tileSize_, dynamites_[i].tile.y * tileSize_};
-        // @
-        rects_[i].color = {1.f, 1.f, 1.f, 1.f};
-        rects_[i].texRect = {0.f, 0.f, 1.f, 1.f};
+        // @ somewhat specific to the dynamite texture asset
+        const float coeff = fabs(sinf(dynamites_[i].timer * 2.f)) * 0.4f;
+        Rect& rect = rects_[i];
+
+        rect.size.x = tileSize_ + coeff * tileSize_;
+        rect.size.y = rect.size.x;
+
+        rect.pos = {dynamites_[i].tile.x * tileSize_ + (tileSize_ - rect.size.x) / 2.f,
+                    dynamites_[i].tile.y * tileSize_ + (tileSize_ - rect.size.y) / 2.f};
+
+        // default values might be overwritten
+        rect.color = {1.f, 1.f, 1.f, 1.f};
+        rect.texRect = {0.f, 0.f, 1.f, 1.f};
     }
 
     uniform1i(program, "mode", FragmentMode::Texture);
