@@ -272,12 +272,13 @@ GameScene::~GameScene()
 
 void GameScene::setNewGame()
 {
+    showScore_ = false;
     dynamites_.clear();
 
     for(Player& player: players_)
     {
         player.dropCooldown = 0.f;
-        player.hp = 3;
+        player.hp = HP;
         // so player.prevDir won't be overwritten in processInput()
         player.dir = Dir::Nil;
     }
@@ -386,6 +387,11 @@ void GameScene::processInput(const Array<WinEvent>& events)
                 case GLFW_KEY_LEFT:  actions_[1].left  = on; break;
                 case GLFW_KEY_RIGHT: actions_[1].right = on; break;
                 case GLFW_KEY_SPACE: actions_[1].drop  = on; break;
+
+                case GLFW_KEY_ESCAPE:
+                    if(on && allowAction)
+                        showScore_ = !showScore_;
+                    break;
             }
         }
     }
@@ -720,7 +726,7 @@ void GameScene::render(const GLuint program)
         Rect rect;
         rect.size = {tileSize_, tileSize_};
         rect.pos = player.pos;
-        rect.color = {1.f, 1.f, 1.f, 0.2f};
+        rect.color = {1.f, 1.f, 1.f, 0.15f};
 
         uniform1i(program, "mode", FragmentMode::Color);
         updateGLBuffers(glBuffers_, &rect, 1);
@@ -728,13 +734,13 @@ void GameScene::render(const GLuint program)
 
         rect.color.w = 1.f;
 
-        const vec4 frame = player.dir ? player.anims[player.dir].getCurrentFrame() :
-                                        player.anims[player.prevDir].frames[0];
+        rect.texRect = player.dir ? player.anims[player.dir].getCurrentFrame() :
+                                    player.anims[player.prevDir].frames[0];
 
-        rect.texRect.x = frame.x / player.texture->size.x;
-        rect.texRect.y = frame.y / player.texture->size.y;
-        rect.texRect.z = frame.z / player.texture->size.x;
-        rect.texRect.w = frame.w / player.texture->size.y;
+        rect.texRect.x /= player.texture->size.x;
+        rect.texRect.y /= player.texture->size.y;
+        rect.texRect.z /= player.texture->size.x;
+        rect.texRect.w /= player.texture->size.y;
 
         uniform1i(program, "mode", FragmentMode::Texture);
         bindTexture(*player.texture);
@@ -774,87 +780,141 @@ void GameScene::render(const GLuint program)
     renderGLBuffers(glBuffers_, emitter_.numActive);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // ui text
+    // bars
 
-    uniform1i(program, "mode", FragmentMode::Font);
-    bindTexture(font_.texture);
-
-    const vec2 offset = {5.f, 2.f}; // @
-    int count = 0;
-    char buffer[20];
-    Text text;
-    text.str = buffer;
-    text.scale = 0.35f;
-
-    assert(getSize(players_) == 2);
-
-    // * player 1 hp
-    snprintf(buffer, getSize(buffer), "hp: %d", players_[0].hp);
-    text.pos = offset;
-    text.color = {1.f, 0.6f, 0.15f, 0.8f};
-    count += writeTextToBuffer(text, font_, rects_, getSize(rects_));
-
-    // * player 2 hp
-    snprintf(buffer, getSize(buffer), "hp: %d", players_[1].hp);
-    text.color = {1.f, 1.f, 1.f, 0.8f};
-    text.pos.x = MapSize * tileSize_ - getTextSize(text, font_).x - offset.x;
-    count += writeTextToBuffer(text, font_, rects_ + count, getSize(rects_) - count);
-
-    // * score
-    snprintf(buffer, getSize(buffer), "%d : %d", players_[0].score, players_[1].score);
-    text.color = {0.5f, 1.f, 0.5f, 0.8f};
-    text.pos.x = (MapSize * tileSize_ - getTextSize(text, font_).x) / 2.f;
-    count += writeTextToBuffer(text, font_, rects_ + count, getSize(rects_) - count);
-
-    // * new round timer
-    if(timeToStart_ > 0.f)
     {
-        text.color = {1.f, 0.5f, 1.f, 0.7f};
-        text.scale = 2.f;
-        snprintf(buffer, getSize(buffer), "%.3f", timeToStart_);
-        const vec2 size = getTextSize(text, font_);
-        text.pos = {(MapSize * tileSize_ - size.x) / 2.f,
-                    (MapSize * tileSize_ - size.y) / 2.f};
-        count += writeTextToBuffer(text, font_, rects_ + count, getSize(rects_) - count);
+        Rect* rect = &rects_[0];
+        const float h = 2.f;
+        for(const Player& player: players_)
+        {
+            // * hp
+            rect[0].pos = player.pos;
+            rect[0].size = {float(player.hp) / HP * tileSize_, h};
+            rect[0].color = {1.f, 0.1f, 0.1f, 0.7f};
+
+            // * drop cooldown
+            rect[1].pos = rect[0].pos;
+            rect[1].pos.y += h;
+            rect[1].size = {player.dropCooldown / dropCooldown_ * tileSize_, h};
+            rect[1].color = {1.f, 1.f, 0.f, 0.6f};
+
+            rect += 2;
+        }
     }
 
-    updateGLBuffers(glBuffers_, rects_, count);
-    renderGLBuffers(glBuffers_, count);
-
-    // drop cooldown bars
-
-    assert(getSize(players_) == 2);
-    const vec2 barSize = {30.f, 3.f};
-    const float space = 80.f;
-
-    // * player1
-    rects_[0].size = barSize;
-    rects_[0].pos.y = (tileSize_ - barSize.y) / 2.f;
-    rects_[0].pos.x = (MapSize * tileSize_ - 2.f * barSize.x - space) / 2.f;
-    rects_[0].color = {1.f, 1.f, 1.f, 0.2f};
-
-    rects_[1] = rects_[0];
-    rects_[1].color = {1.f, 0.6f, 0.15f, 0.5f};
-    rects_[1].size.x *= 1.f - players_[0].dropCooldown / dropCooldown_;
-
-    // * player2
-    rects_[2] = rects_[0];
-    rects_[2].pos.x += barSize.x + space;
-
-    rects_[3] = rects_[2];
-    rects_[3].color = {1.f, 1.f, 1.f, 0.5f};
-    rects_[3].size.x *= 1.f - players_[1].dropCooldown / dropCooldown_;
-
     uniform1i(program, "mode", FragmentMode::Color);
-    updateGLBuffers(glBuffers_, rects_, 4);
-    renderGLBuffers(glBuffers_, 4);
+    updateGLBuffers(glBuffers_, rects_, getSize(players_) * 2.f);
+    renderGLBuffers(glBuffers_, getSize(players_) * 2.f);
+
+    // new round timer
+
+    if(timeToStart_ > 0.f)
+    {
+        char buffer[20];
+        Text text;
+        text.str = buffer;
+        snprintf(buffer, getSize(buffer), "%.3f", timeToStart_);
+        text.color = {1.f, 0.5f, 1.f, 0.8f};
+        text.scale = 2.f;
+        const vec2 size = getTextSize(text, font_);
+        text.pos = {(MapSize * tileSize_ - size.x) / 2.f, 5.f};
+
+        const int count = writeTextToBuffer(text, font_, rects_, getSize(rects_));
+
+        uniform1i(program, "mode", FragmentMode::Font);
+        bindTexture(font_.texture);
+        updateGLBuffers(glBuffers_, rects_, count);
+        renderGLBuffers(glBuffers_, count);
+    }
+
+    // score
+
+    if(timeToStart_ > 0.f || showScore_)
+    {
+        char buffer[256];
+        Text text;
+        text.color = {1.f, 1.f, 0.f, 0.8f};
+        text.scale = 0.8f;
+        text.str = buffer;
+
+        int bufOffset = 0;
+        bufOffset += snprintf(buffer + bufOffset, max(0, getSize(buffer) - bufOffset),
+                              "score:");
+
+        for(const Player& player: players_)
+        {
+            bufOffset += snprintf(buffer + bufOffset, max(0, getSize(buffer) - bufOffset),
+                                  "\n%d", player.score);
+        }
+
+        const vec2 textSize = getTextSize(text, font_);
+        text.pos = {(MapSize * tileSize_ - textSize.x) / 2.f,
+                    (MapSize * tileSize_ - textSize.y) / 2.f};
+
+        // * background
+        {
+            const float border = 5.f;
+            Rect rect;
+            rect.pos = {text.pos.x - border, text.pos.y - border};
+            rect.size = {textSize.x + 2.f * border, textSize.y + 2.f * border};
+            rect.color = {0.f, 0.f, 0.f, 0.85f};
+            uniform1i(program, "mode", FragmentMode::Color);
+            updateGLBuffers(glBuffers_, &rect, 1);
+            renderGLBuffers(glBuffers_, 1);
+        }
+
+        // * text
+        {
+            const int textCount = writeTextToBuffer(text, font_, rects_, getSize(rects_));
+            uniform1i(program, "mode", FragmentMode::Font);
+            bindTexture(font_.texture);
+            updateGLBuffers(glBuffers_, rects_, textCount);
+            renderGLBuffers(glBuffers_, textCount);
+        }
+
+        // * avatars
+
+        uniform1i(program, "mode", FragmentMode::Texture);
+
+        const float lineSpace = text.scale * font_.lineSpace;
+        Rect rect;
+        rect.size = {20.f, 20.f};
+        rect.pos = {text.pos.x + textSize.x - rect.size.x, text.pos.y};
+
+        for(const Player& player: players_)
+        {
+            rect.pos.y += lineSpace;
+            rect.texRect = player.dir ? player.anims[player.dir].getCurrentFrame() :
+                                        player.anims[player.prevDir].frames[0];
+
+            rect.texRect.x /= player.texture->size.x;
+            rect.texRect.y /= player.texture->size.y;
+            rect.texRect.z /= player.texture->size.x;
+            rect.texRect.w /= player.texture->size.y;
+
+            bindTexture(*player.texture);
+            updateGLBuffers(glBuffers_, &rect, 1);
+            renderGLBuffers(glBuffers_, 1);
+        }
+    }
 
     // imgui
 
-    ImGui::ShowDemoWindow();
-    ImGui::Begin("options");
-    ImGui::Text("test test test !!!");
-    if(ImGui::Button("quit"))
-        frame_.popMe = true;
+    ImGui::Begin("cavetiles");
+    ImGui::Spacing();
+    ImGui::Text("controls:\n"
+                "\n"
+                "Esc - display score\n"
+                "\n"
+                "player1:\n"
+                "   W - move up\n"
+                "   S - move down\n"
+                "   A - move left\n"
+                "   D - move right\n"
+                "   C - drop dynamite\n"
+                "\n"
+                "player2:\n"
+                "   ARROWS - move\n"
+                "   SPACE  - drop dynamite\n");
     ImGui::End();
 }

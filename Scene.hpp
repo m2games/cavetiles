@@ -332,7 +332,7 @@ public:
 private:
     void setNewGame();
 
-    enum {MapSize = 13};
+    enum {MapSize = 13, HP = 3};
     const float tileSize_ = 20.f;
     const float dropCooldown_ = 1.f;
 
@@ -347,6 +347,7 @@ private:
     Emitter emitter_;
     float timeToStart_ = 0.f;
     Font font_;
+    bool showScore_;
 
     struct
     {
