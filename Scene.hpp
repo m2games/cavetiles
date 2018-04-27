@@ -334,6 +334,7 @@ private:
 
     enum {MapSize = 13};
     const float tileSize_ = 20.f;
+    const float dropCooldown_ = 1.f;
 
     GLBuffers glBuffers_;
     Rect rects_[MapSize * MapSize];

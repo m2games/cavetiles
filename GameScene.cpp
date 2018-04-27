@@ -358,7 +358,7 @@ void GameScene::processInput(const Array<WinEvent>& events)
         for(Player& player: players_)
             player.score += player.hp > 0;
 
-        timeToStart_ = 2.f;
+        timeToStart_ = 3.f;
         setNewGame();
     }
 
@@ -416,9 +416,9 @@ void GameScene::processInput(const Array<WinEvent>& events)
                 }
             }
 
-            if(freeTile && players_[i].dropCooldown <= 0.f)
+            if(freeTile && players_[i].dropCooldown == 0.f)
             {
-                players_[i].dropCooldown = 0.5f;
+                players_[i].dropCooldown = dropCooldown_;
                 Dynamite dynamite;
                 dynamite.tile = targetTile;
                 dynamite.timer = 3.f;
@@ -546,6 +546,7 @@ void GameScene::update()
         player.pos.y += player.vel * frame_.time * dirVecs_[player.dir].y;
         player.anims[player.dir].update(frame_.time);
         player.dropCooldown -= frame_.time;
+        player.dropCooldown = max(0.f, player.dropCooldown);
 
         // collisions
         // @TODO(matiTechno): unify collision code for tiles and dynamites?
@@ -778,7 +779,7 @@ void GameScene::render(const GLuint program)
     uniform1i(program, "mode", FragmentMode::Font);
     bindTexture(font_.texture);
 
-    const float offsetX = 5.f;
+    const vec2 offset = {5.f, 2.f}; // @
     int count = 0;
     char buffer[20];
     Text text;
@@ -789,24 +790,64 @@ void GameScene::render(const GLuint program)
 
     // * player 1 hp
     snprintf(buffer, getSize(buffer), "hp: %d", players_[0].hp);
-    text.pos = {offsetX, 2.f};
-    text.color = {1.f, 0.6f, 0.15f, 0.7f};
+    text.pos = offset;
+    text.color = {1.f, 0.6f, 0.15f, 0.8f};
     count += writeTextToBuffer(text, font_, rects_, getSize(rects_));
 
     // * player 2 hp
     snprintf(buffer, getSize(buffer), "hp: %d", players_[1].hp);
-    text.color = {1.f, 1.f, 1.f, 0.7f};
-    text.pos.x = MapSize * tileSize_ - getTextSize(text, font_).x - offsetX;
+    text.color = {1.f, 1.f, 1.f, 0.8f};
+    text.pos.x = MapSize * tileSize_ - getTextSize(text, font_).x - offset.x;
     count += writeTextToBuffer(text, font_, rects_ + count, getSize(rects_) - count);
 
     // * score
     snprintf(buffer, getSize(buffer), "%d : %d", players_[0].score, players_[1].score);
-    text.color = {0.5f, 1.f, 0.5f, 0.7f};
+    text.color = {0.5f, 1.f, 0.5f, 0.8f};
     text.pos.x = (MapSize * tileSize_ - getTextSize(text, font_).x) / 2.f;
     count += writeTextToBuffer(text, font_, rects_ + count, getSize(rects_) - count);
 
+    // * new round timer
+    if(timeToStart_ > 0.f)
+    {
+        text.color = {1.f, 0.5f, 1.f, 0.7f};
+        text.scale = 2.f;
+        snprintf(buffer, getSize(buffer), "%.3f", timeToStart_);
+        const vec2 size = getTextSize(text, font_);
+        text.pos = {(MapSize * tileSize_ - size.x) / 2.f,
+                    (MapSize * tileSize_ - size.y) / 2.f};
+        count += writeTextToBuffer(text, font_, rects_ + count, getSize(rects_) - count);
+    }
+
     updateGLBuffers(glBuffers_, rects_, count);
     renderGLBuffers(glBuffers_, count);
+
+    // drop cooldown bars
+
+    assert(getSize(players_) == 2);
+    const vec2 barSize = {30.f, 3.f};
+    const float space = 80.f;
+
+    // * player1
+    rects_[0].size = barSize;
+    rects_[0].pos.y = (tileSize_ - barSize.y) / 2.f;
+    rects_[0].pos.x = (MapSize * tileSize_ - 2.f * barSize.x - space) / 2.f;
+    rects_[0].color = {1.f, 1.f, 1.f, 0.2f};
+
+    rects_[1] = rects_[0];
+    rects_[1].color = {1.f, 0.6f, 0.15f, 0.5f};
+    rects_[1].size.x *= 1.f - players_[0].dropCooldown / dropCooldown_;
+
+    // * player2
+    rects_[2] = rects_[0];
+    rects_[2].pos.x += barSize.x + space;
+
+    rects_[3] = rects_[2];
+    rects_[3].color = {1.f, 1.f, 1.f, 0.5f};
+    rects_[3].size.x *= 1.f - players_[1].dropCooldown / dropCooldown_;
+
+    uniform1i(program, "mode", FragmentMode::Color);
+    updateGLBuffers(glBuffers_, rects_, 4);
+    renderGLBuffers(glBuffers_, 4);
 
     // imgui
 
