@@ -488,8 +488,22 @@ void GameScene::update()
                     if(tile == 2)
                         break;
 
-                    else if(tile == 1)
+                    else
                     {
+                        if (tile == 0)
+                        {
+                            // @ shadowing
+                            for(Dynamite& dynamite: dynamites_)
+                            {
+                                if(dynamite.tile.x == x && dynamite.tile.y == y)
+                                {
+                                    // explode in the near future
+                                    dynamite.timer = min(dynamite.timer, 0.1f);
+                                }
+                            }
+                            // Got rid of code duplication - for each player...
+                        }
+
                         tile = 0;
 
                         Explosion explo;
@@ -504,28 +518,6 @@ void GameScene::update()
                         explosions_.pushBack(explo);
                         playSound(sounds_.crateExplosion, 0.2f);
                         break;
-                    }
-                    else // tile == 0
-                    {
-                        // @ shadowing
-                        for(Dynamite& dynamite: dynamites_)
-                        {
-                            if(dynamite.tile.x == x && dynamite.tile.y == y)
-                            {
-                                // explode in the near future
-                                dynamite.timer = min(dynamite.timer, 0.1f);
-                            }
-                        }
-
-                        // @ code duplication
-                        for(Player& player: players_)
-                        {
-                            const ivec2 playerTile = getPlayerTile(player, tileSize_);
-
-                            if(playerTile.x == x && playerTile.y && playerTile.y == y &&
-                               player.hp)
-                                player.hp -= 1;
-                        }
                     }
                 }
             }
