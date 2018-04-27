@@ -451,11 +451,11 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
 void GameScene::update()
 {
-    // * emitter
+    // emitter
 
     emitter_.update(frame_.time);
 
-    // * explosions
+    // explosions
 
     for(int i = 0; i < explosions_.size(); ++i)
     {
@@ -470,7 +470,7 @@ void GameScene::update()
         }
     }
 
-    // * dynamites
+    // dynamites
 
     for(int dynIdx = 0; dynIdx < dynamites_.size(); ++dynIdx)
     {
@@ -550,7 +550,7 @@ void GameScene::update()
 
     }
 
-    // * players
+    // players
 
     for(Player& player: players_)
     {
