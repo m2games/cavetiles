@@ -301,10 +301,13 @@ struct Player
     int dir = Dir::Nil;
     Texture* texture;
     Anim anims[Dir::Count];
-    int prevDir; // for animation only
     float dropCooldown;
     int hp;
     int score = 0;
+
+    // for animation only
+    float dmgTimer = 0.f;
+    int prevDir;
 };
 
 struct Dynamite

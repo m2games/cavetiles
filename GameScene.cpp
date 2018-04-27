@@ -479,7 +479,10 @@ void GameScene::update()
 
                 if(playerTile.x == dynamite.tile.x && playerTile.y == dynamite.tile.y &&
                    player.hp)
+                {
                     player.hp -= 1;
+                    player.dmgTimer = 1.f;
+                }
             }
 
             for(int dirIdx = Dir::Up; dirIdx < Dir::Count; ++dirIdx)
@@ -530,7 +533,10 @@ void GameScene::update()
 
                             if(playerTile.x == x && playerTile.y && playerTile.y == y &&
                                player.hp)
+                            {
                                 player.hp -= 1;
+                                player.dmgTimer = 1.f;
+                            }
                         }
                     }
                 }
@@ -553,6 +559,7 @@ void GameScene::update()
         player.anims[player.dir].update(frame_.time);
         player.dropCooldown -= frame_.time;
         player.dropCooldown = max(0.f, player.dropCooldown);
+        player.dmgTimer -= frame_.time;
 
         // collisions
         // @TODO(matiTechno): unify collision code for tiles and dynamites?
@@ -734,13 +741,17 @@ void GameScene::render(const GLuint program)
         Rect rect;
         rect.size = {tileSize_, tileSize_};
         rect.pos = player.pos;
-        rect.color = {1.f, 1.f, 1.f, 0.15f};
+
+        if(player.dmgTimer > 0.f)
+            rect.color = {1.f, 0.2f, 0.2f, 0.3f};
+        else
+            rect.color = {1.f, 1.f, 1.f, 0.15f};
 
         uniform1i(program, "mode", FragmentMode::Color);
         updateGLBuffers(glBuffers_, &rect, 1);
         renderGLBuffers(glBuffers_, 1);
 
-        rect.color.w = 1.f;
+        rect.color = {1.f, 1.f, 1.f, 1.f};
 
         rect.texRect = player.dir ? player.anims[player.dir].getCurrentFrame() :
                                     player.anims[player.prevDir].frames[0];
@@ -798,7 +809,7 @@ void GameScene::render(const GLuint program)
             // * hp
             rect[0].pos = player.pos;
             rect[0].size = {float(player.hp) / HP * tileSize_, h};
-            rect[0].color = {1.f, 0.1f, 0.1f, 0.7f};
+            rect[0].color = {1.f, 0.15f, 0.15f, 0.7f};
 
             // * drop cooldown
             rect[1].pos = rect[0].pos;
