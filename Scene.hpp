@@ -339,7 +339,7 @@ struct Player
     int prevDir;
 };
 
-struct Dynamite
+struct Bomb
 {
     void addPlayer(const Player& player);
     void removePlayer(const Player& player);
@@ -348,7 +348,7 @@ struct Dynamite
     ivec2 tile;
     int range = 2;
     float timer;
-    // players allowed to stand on a dynamite (used for resolving collisions)
+    // players allowed to stand on a bomb (used for resolving collisions)
     const Player* players[2] = {}; // initialized to 0
 };
 
@@ -372,7 +372,7 @@ private:
     Rect rects_[MapSize * MapSize];
     int tiles_[MapSize][MapSize] = {}; // initialized to 0
     Player players_[2];
-    FixedArray<Dynamite, 50> dynamites_;
+    FixedArray<Bomb, 50> bombs_;
     FixedArray<Explosion, 50> explosions_;
     vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     Emitter emitter_;
@@ -385,13 +385,13 @@ private:
         Texture tile;
         Texture player1;
         Texture player2;
-        Texture dynamite;
+        Texture bomb;
         Texture explosion;
     } textures_;
 
     struct
     {
-        FMOD_SOUND* dynamite;
+        FMOD_SOUND* bomb;
         FMOD_SOUND* crateExplosion;
     } sounds_;
 

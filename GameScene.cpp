@@ -17,7 +17,7 @@ Anim createExplosionAnim()
     return anim;
 }
 
-void Dynamite::addPlayer(const Player& player)
+void Bomb::addPlayer(const Player& player)
 {
     for(const Player*& p: players)
     {
@@ -31,7 +31,7 @@ void Dynamite::addPlayer(const Player& player)
     assert(false);
 }
 
-void Dynamite::removePlayer(const Player& player)
+void Bomb::removePlayer(const Player& player)
 {
     for(const Player*& p: players)
     {
@@ -44,7 +44,7 @@ void Dynamite::removePlayer(const Player& player)
     assert(false);
 }
 
-bool Dynamite::findPlayer(const Player& player) const
+bool Bomb::findPlayer(const Player& player) const
 {
     for(const Player* const p: players)
     {
@@ -171,8 +171,8 @@ GameScene::GameScene()
     assert(MapSize % 2);
 
     {
-        Dynamite dynamite;
-        assert(getSize(dynamite.players) == getSize(players_));
+        Bomb bomb;
+        assert(getSize(bomb.players) == getSize(players_));
     }
 
     glBuffers_ = createGLBuffers();
@@ -182,11 +182,11 @@ GameScene::GameScene()
     textures_.tile = createTextureFromFile("res/tiles.png");
     textures_.player1 = createTextureFromFile("res/player1.png");
     textures_.player2 = createTextureFromFile("res/player2.png");
-    textures_.dynamite = createTextureFromFile("res/bomb000.png");
+    textures_.bomb = createTextureFromFile("res/bomb000.png");
     textures_.explosion = createTextureFromFile("res/Explosion.png");
 
     FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_various6.wav",
-                                    FMOD_CREATESAMPLE, nullptr, &sounds_.dynamite) );
+                                    FMOD_CREATESAMPLE, nullptr, &sounds_.bomb) );
 
     FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_short_hard15.wav",
                                     FMOD_CREATESAMPLE, nullptr, &sounds_.crateExplosion) );
@@ -271,16 +271,16 @@ GameScene::~GameScene()
     deleteTexture(textures_.tile);
     deleteTexture(textures_.player1);
     deleteTexture(textures_.player2);
-    deleteTexture(textures_.dynamite);
+    deleteTexture(textures_.bomb);
     deleteTexture(textures_.explosion);
-    FCHECK( FMOD_Sound_Release(sounds_.dynamite) );
+    FCHECK( FMOD_Sound_Release(sounds_.bomb) );
     FCHECK( FMOD_Sound_Release(sounds_.crateExplosion) );
 }
 
 void GameScene::setNewGame()
 {
     showScore_ = false;
-    dynamites_.clear();
+    bombs_.clear();
 
     for(Player& player: players_)
     {
@@ -419,9 +419,9 @@ void GameScene::processInput(const Array<WinEvent>& events)
             const ivec2 targetTile = getPlayerTile(players_[i], tileSize_);
             bool freeTile = true;
 
-            for(const Dynamite& dynamite: dynamites_)
+            for(const Bomb& bomb: bombs_)
             {
-                if(dynamite.tile == targetTile)
+                if(bomb.tile == targetTile)
                 {
                     freeTile = false;
                     break;
@@ -431,17 +431,17 @@ void GameScene::processInput(const Array<WinEvent>& events)
             if(freeTile && players_[i].dropCooldown == 0.f)
             {
                 players_[i].dropCooldown = dropCooldown_;
-                Dynamite dynamite;
-                dynamite.tile = targetTile;
-                dynamite.timer = 3.f;
+                Bomb bomb;
+                bomb.tile = targetTile;
+                bomb.timer = 3.f;
 
                 for(const Player& player: players_)
                 {
                     if(isCollision(player.pos, targetTile, tileSize_))
-                        dynamite.addPlayer(player);
+                        bomb.addPlayer(player);
                 }
 
-                dynamites_.pushBack(dynamite);
+                bombs_.pushBack(bomb);
             }
         }
 
@@ -470,24 +470,24 @@ void GameScene::update()
         }
     }
 
-    // dynamites
+    // bombs
 
-    for(int dynIdx = 0; dynIdx < dynamites_.size(); ++dynIdx)
+    for(int bombIdx = 0; bombIdx < bombs_.size(); ++bombIdx)
     {
-        Dynamite& dynamite = dynamites_[dynIdx];
-        dynamite.timer -= frame_.time;
+        Bomb& bomb = bombs_[bombIdx];
+        bomb.timer -= frame_.time;
 
-        if(dynamite.timer > 0.f)
+        if(bomb.timer > 0.f)
             continue;
 
         for(int dirIdx = Dir::Nil; dirIdx < Dir::Count; ++dirIdx)
         {
             const vec2 dir = dirVecs_[dirIdx];
-            const int range = (dirIdx != Dir::Nil) ? dynamite.range : 1;
+            const int range = (dirIdx != Dir::Nil) ? bomb.range : 1;
 
             for(int step = 1; step <= range; ++step)
             {
-                const ivec2 tile = dynamite.tile + ivec2(dir) * step;
+                const ivec2 tile = bomb.tile + ivec2(dir) * step;
                 int& tileValue = tiles_[tile.y][tile.x];
 
                 if(tileValue == 2)
@@ -508,15 +508,15 @@ void GameScene::update()
                 }
                 else
                 {
-                    bool hitDynamite = false;
+                    bool hitBomb = false;
                     // @ shadowing
-                    for(Dynamite& dynamite: dynamites_)
+                    for(Bomb& bomb: bombs_)
                     {
-                        if(dynamite.tile == tile)
+                        if(bomb.tile == tile)
                         {
-                            hitDynamite = true;
+                            hitBomb = true;
                             // explode in the near future
-                            dynamite.timer = min(dynamite.timer, 0.1f);
+                            bomb.timer = min(bomb.timer, 0.1f);
                         }
                     }
 
@@ -539,7 +539,7 @@ void GameScene::update()
                     if(hitPlayer)
                         e.color = {1.f, 0.5f, 0.5f, 0.6f};
 
-                    else if(hitDynamite)
+                    else if(hitBomb)
                         e.color = {0.1f, 0.1f, 0.1f, 0.8f};
 
                     else
@@ -553,10 +553,10 @@ void GameScene::update()
                 }
             }
         }
-        dynamite = dynamites_.back();
-        dynamites_.popBack();
-        --dynIdx;
-        playSound(sounds_.dynamite, 0.2f);
+        bomb = bombs_.back();
+        bombs_.popBack();
+        --bombIdx;
+        playSound(sounds_.bomb, 0.2f);
     }
 
     // players
@@ -570,16 +570,16 @@ void GameScene::update()
         player.dmgTimer -= frame_.time;
 
         // collisions
-        // @TODO(matiTechno): unify collision code for tiles and dynamites?
+        // @TODO(matiTechno): unify collision code for tiles and bombs?
 
         const ivec2 playerTile = getPlayerTile(player, tileSize_);
 
-        // * with dynamites
+        // * with bombs
 
-        for(Dynamite& dynamite: dynamites_)
+        for(Bomb& bomb: bombs_)
         {
-            const bool collision = isCollision(player.pos, dynamite.tile, tileSize_);
-            const bool allowed = dynamite.findPlayer(player);
+            const bool collision = isCollision(player.pos, bomb.tile, tileSize_);
+            const bool allowed = bomb.findPlayer(player);
 
             if(collision && !allowed)
             {
@@ -590,7 +590,7 @@ void GameScene::update()
             }
             else if(!collision && allowed)
             {
-                dynamite.removePlayer(player);
+                bomb.removePlayer(player);
             }
         }
 
@@ -700,18 +700,18 @@ void GameScene::render(const GLuint program)
     updateGLBuffers(glBuffers_, rects_, getSize(rects_));
     renderGLBuffers(glBuffers_, getSize(rects_));
 
-    // dynamites
+    // bombs
 
-    assert(dynamites_.size() <= getSize(rects_));
+    assert(bombs_.size() <= getSize(rects_));
 
-    for(int i = 0; i < dynamites_.size(); ++i)
+    for(int i = 0; i < bombs_.size(); ++i)
     {
-        // @ somewhat specific to the dynamite texture asset
-        const float coeff = fabs(sinf(dynamites_[i].timer * 2.f)) * 0.4f;
+        // @ somewhat specific to the bomb texture asset
+        const float coeff = fabs(sinf(bombs_[i].timer * 2.f)) * 0.4f;
 
         Rect& rect = rects_[i];
         rect.size = vec2(tileSize_ + coeff * tileSize_);
-        rect.pos = vec2(dynamites_[i].tile) * tileSize_ + (vec2(tileSize_) - rect.size) / 2.f;
+        rect.pos = vec2(bombs_[i].tile) * tileSize_ + (vec2(tileSize_) - rect.size) / 2.f;
 
         // default values might be overwritten
         rect.color = {1.f, 1.f, 1.f, 1.f};
@@ -719,9 +719,9 @@ void GameScene::render(const GLuint program)
     }
 
     uniform1i(program, "mode", FragmentMode::Texture);
-    bindTexture(textures_.dynamite);
-    updateGLBuffers(glBuffers_, rects_, dynamites_.size());
-    renderGLBuffers(glBuffers_, dynamites_.size());
+    bindTexture(textures_.bomb);
+    updateGLBuffers(glBuffers_, rects_, bombs_.size());
+    renderGLBuffers(glBuffers_, bombs_.size());
 
     // players
 
@@ -914,10 +914,10 @@ void GameScene::render(const GLuint program)
                 "\n"
                 "player1:\n"
                 "   WSAD   - move\n"
-                "   C      - drop dynamite\n"
+                "   C      - drop a bomb\n"
                 "\n"
                 "player2:\n"
                 "   ARROWS - move\n"
-                "   SPACE  - drop dynamite\n");
+                "   SPACE  - drop a bomb\n");
     ImGui::End();
 }

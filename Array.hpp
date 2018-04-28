@@ -4,7 +4,7 @@
 #include <assert.h>
 
 // does not respect constructors & destructors
-// @TODO(matiTechno): copy constructor, etc.
+// @TODO(matiTechno): copy constructor, swap, etc.
 template<typename T>
 class Array
 {
