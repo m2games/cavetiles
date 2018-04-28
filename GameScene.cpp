@@ -72,8 +72,7 @@ void Emitter::update(const float dt)
 {
     for(int i = 0; i < numActive; ++i)
     {
-        rects[i].pos.x += particles[i].vel.x * dt;
-        rects[i].pos.y += particles[i].vel.y * dt;
+        rects[i].pos += particles[i].vel * dt;
         particles[i].life -= dt;
 
         if(particles[i].life <= 0.f)
@@ -108,18 +107,15 @@ void Emitter::update(const float dt)
 
         Rect& rect = rects[numActive];
 
-        rect.size.x = getRandomFloat(particleRanges.size.min, particleRanges.size.max);
-        rect.size.y = rect.size.x;
+        rect.size = vec2(getRandomFloat(particleRanges.size.min, particleRanges.size.max));
 
         rect.color.x = getRandomFloat(particleRanges.color.min.x, particleRanges.color.max.x);
         rect.color.y = getRandomFloat(particleRanges.color.min.y, particleRanges.color.max.y);
         rect.color.z = getRandomFloat(particleRanges.color.min.z, particleRanges.color.max.z);
         rect.color.w = getRandomFloat(particleRanges.color.min.w, particleRanges.color.max.w);
 
-        rect.pos.x = getRandomFloat(0.f, 1.f) * spawn.size.x + spawn.pos.x
-                     - rect.size.x / 2.f;
-        rect.pos.y = getRandomFloat(0.f, 1.f) * spawn.size.y + spawn.pos.y
-                     - rect.size.y / 2.f;
+        rect.pos = vec2(getRandomFloat(0.f, 1.f), getRandomFloat(0.f, 1.f)) * spawn.size
+                   + spawn.pos - rect.size / 2.f;
 
         ++numActive;
     }
@@ -142,13 +138,12 @@ void Anim::update(const float dt)
 
 ivec2 getPlayerTile(const Player& player, const float tileSize)
 {
-    return {int(player.pos.x / tileSize + 0.5f),
-            int(player.pos.y / tileSize + 0.5f)};
+    return ivec2(player.pos / tileSize + 0.5f);
 }
 
 bool isCollision(const vec2 playerPos, const ivec2 tile, const float tileSize)
 {
-    vec2 tilePos = {tile.x * tileSize, tile.y * tileSize};
+    const vec2 tilePos = vec2(tile) * tileSize;
 
     return playerPos.x < tilePos.x + tileSize &&
            playerPos.x + tileSize > tilePos.x &&
@@ -163,8 +158,7 @@ float length(const vec2 v)
 
 vec2 normalize(const vec2 v)
 {
-    const float len = length(v);
-    return {v.x / len, v.y / len};
+    return v / length(v);
 }
 
 float dot(const vec2 v1, const vec2 v2)
@@ -197,8 +191,8 @@ GameScene::GameScene()
     FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_short_hard15.wav",
                                     FMOD_CREATESAMPLE, nullptr, &sounds_.crateExplosion) );
 
-    emitter_.spawn.size = {5.f, 5.f};
-    emitter_.spawn.pos = {210.f, 210.f};
+    emitter_.spawn.size = vec2(5.f);
+    emitter_.spawn.pos = vec2(210.f);
     assert(emitter_.spawn.pos.x <= (MapSize - 1) * tileSize_);
     emitter_.spawn.hz = 100.f;
     emitter_.particleRanges.life = {3.f, 6.f};
@@ -299,10 +293,10 @@ void GameScene::setNewGame()
     // specific configuration for each player
     assert(getSize(players_) == 2);
 
-    players_[0].pos = {tileSize_ * 1, tileSize_ * 1};
+    players_[0].pos = vec2(tileSize_ * 1);
     players_[0].prevDir = Dir::Down;
 
-    players_[1].pos = {tileSize_ * (MapSize - 2), tileSize_ * (MapSize - 2)};
+    players_[1].pos = vec2(tileSize_ * (MapSize - 2));
     players_[1].prevDir = Dir::Left;
 
     // tilemap
@@ -328,15 +322,14 @@ void GameScene::setNewGame()
 
             for(const Player& player: players_)
             {
-                const ivec2 playerTile = getPlayerTile(player, tileSize_);
-
                 for(int k = -1; k < 2; ++k)
                 {
                     for(int l = -1; l < 2; ++l)
                     {
-                        const ivec2 adjacentTile = {playerTile.x + k, playerTile.y + l};
+                        const ivec2 adjacentTile = getPlayerTile(player, tileSize_)
+                                                   + ivec2(k, l);
 
-                        if(targetTile.x == adjacentTile.x && targetTile.y == adjacentTile.y)
+                        if(targetTile == adjacentTile)
                             goto end;
                     }
                 }
@@ -428,7 +421,7 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
             for(const Dynamite& dynamite: dynamites_)
             {
-                if(dynamite.tile.x == targetTile.x && dynamite.tile.y == targetTile.y)
+                if(dynamite.tile == targetTile)
                 {
                     freeTile = false;
                     break;
@@ -494,9 +487,8 @@ void GameScene::update()
 
             for(int step = 1; step <= range; ++step)
             {
-                const int x = dynamite.tile.x + int(dir.x) * step;
-                const int y = dynamite.tile.y + int(dir.y) * step;
-                int& tileValue = tiles_[y][x];
+                const ivec2 tile = dynamite.tile + ivec2(dir) * step;
+                int& tileValue = tiles_[tile.y][tile.x];
 
                 if(tileValue == 2)
                     break;
@@ -507,7 +499,7 @@ void GameScene::update()
 
                     Explosion e;
                     e.anim = createExplosionAnim();
-                    e.tile = {x, y};
+                    e.tile = tile;
                     e.size = tileSize_ * 2.f;
                     explosions_.pushBack(e);
 
@@ -516,41 +508,43 @@ void GameScene::update()
                 }
                 else
                 {
+                    bool hitDynamite = false;
                     // @ shadowing
                     for(Dynamite& dynamite: dynamites_)
                     {
-                        if(dynamite.tile.x == x && dynamite.tile.y == y)
+                        if(dynamite.tile == tile)
                         {
+                            hitDynamite = true;
                             // explode in the near future
                             dynamite.timer = min(dynamite.timer, 0.1f);
                         }
                     }
 
-                    bool hit = false;
+                    bool hitPlayer = false;
                     for(Player& player: players_)
                     {
-                        const ivec2 playerTile = getPlayerTile(player, tileSize_);
-
-                        if(playerTile.x == x && playerTile.y && playerTile.y == y && player.hp)
+                        if(getPlayerTile(player, tileSize_) == tile)
                         {
                             player.hp -= 1;
                             player.dmgTimer = 1.2f;
-                            hit = true;
+                            hitPlayer = true;
                         }
                     }
 
                     Explosion e;
                     e.anim = createExplosionAnim();
-                    e.tile = {x, y};
+                    e.tile = tile;
+                    e.size = tileSize_ * 2.f;
 
-                    if(hit)
-                    {
-                        e.size = tileSize_ * 2.f;
+                    if(hitPlayer)
                         e.color = {1.f, 0.5f, 0.5f, 0.6f};
-                    }
+
+                    else if(hitDynamite)
+                        e.color = {0.1f, 0.1f, 0.1f, 0.8f};
+
                     else
                     {
-                        e.size = tileSize_ * 3.f;
+                        e.size = tileSize_ * 4.f;
                         e.anim.frameDt *= 1.5f;
                         e.color = {0.1f, 0.1f, 0.1f, 0.2f};
                     }
@@ -569,8 +563,7 @@ void GameScene::update()
 
     for(Player& player: players_)
     {
-        player.pos.x += player.vel * frame_.time * dirVecs_[player.dir].x;
-        player.pos.y += player.vel * frame_.time * dirVecs_[player.dir].y;
+        player.pos += player.vel * frame_.time * dirVecs_[player.dir];
         player.anims[player.dir].update(frame_.time);
         player.dropCooldown -= frame_.time;
         player.dropCooldown = max(0.f, player.dropCooldown);
@@ -590,14 +583,10 @@ void GameScene::update()
 
             if(collision && !allowed)
             {
-                if(player.dir == Dir::Left || player.dir == Dir::Right)
-                {
+                if(dirVecs_[player.dir].x)
                     player.pos.x = playerTile.x * tileSize_;
-                }
                 else
-                {
                     player.pos.y = playerTile.y * tileSize_;
-                }
             }
             else if(!collision && allowed)
             {
@@ -613,7 +602,7 @@ void GameScene::update()
         {
             for(int j = -1; j < 2; ++j)
             {
-                const ivec2 tile = {playerTile.x + i, playerTile.y + j};
+                const ivec2 tile = playerTile + ivec2(i, j);
 
                 if(tiles_[tile.y][tile.x] != 0 && isCollision(player.pos, tile, tileSize_))
                 {
@@ -625,52 +614,40 @@ void GameScene::update()
 end:
         if(collision)
         {
-            if(player.dir == Dir::Left || player.dir == Dir::Right)
-            {
+            if(dirVecs_[player.dir].x)
                 player.pos.x = playerTile.x * tileSize_;
-            }
             else
-            {
                 player.pos.y = playerTile.y * tileSize_;
-            }
 
-            // sliding on the corners mechanic
+            // sliding on the corner mechanic
 
-            const vec2 offset = {player.pos.x - playerTile.x * tileSize_,
-                                 player.pos.y - playerTile.y * tileSize_};
-
+            const vec2 offset = player.pos - vec2(playerTile) * tileSize_;
             ivec2 slideTile;
 
             if( (length(offset) > tileSize_ / 4.f) &&
                 (tiles_[int(playerTile.y + dirVecs_[player.dir].y)]
                        [int(playerTile.x + dirVecs_[player.dir].x)] != 0) )
             {
-                vec2 norm = normalize(offset);
-                slideTile.x = playerTile.x + norm.x;
-                slideTile.y = playerTile.y + norm.y;
-                // @matiTechno
-                assert(slideTile.x != playerTile.x || slideTile.y != playerTile.y);
+                slideTile = playerTile + ivec2(normalize(offset));
+                // @ matiTechno
+                assert(slideTile != playerTile);
             }
             else
                 slideTile = playerTile;
 
-            const vec2 slideTilePos = {slideTile.x * tileSize_, slideTile.y * tileSize_};
+            const vec2 slideTilePos = vec2(slideTile) * tileSize_;
 
             // important: y first, x second
             // check if a tile next to slideTile (in the player direction) is free
             if(tiles_[int(slideTile.y + dirVecs_[player.dir].y)]
                      [int(slideTile.x + dirVecs_[player.dir].x)] == 0)
             {
-                const vec2 slideVec = {slideTilePos.x - player.pos.x,
-                                       slideTilePos.y - player.pos.y};
-
+                const vec2 slideVec = slideTilePos - player.pos;
                 const vec2 slideDir = normalize(slideVec);
 
-                player.pos.x += player.vel * frame_.time * slideDir.x;
-                player.pos.y += player.vel * frame_.time * slideDir.y;
+                player.pos += player.vel * frame_.time * slideDir;
 
-                const vec2 newSlideVec = {slideTilePos.x - player.pos.x,
-                                          slideTilePos.y - player.pos.y};
+                const vec2 newSlideVec = slideTilePos - player.pos;
 
                 if(dot(slideVec, newSlideVec) < 0.f)
                     player.pos = slideTilePos;
@@ -684,8 +661,8 @@ void GameScene::render(const GLuint program)
     bindProgram(program);
 
     Camera camera;
-    camera.pos = {0.f, 0.f};
-    camera.size = {MapSize * tileSize_, MapSize * tileSize_};
+    camera.pos = vec2(0.f);
+    camera.size = vec2(MapSize * tileSize_);
     camera = expandToMatchAspectRatio(camera, frame_.fbSize);
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);
@@ -694,16 +671,16 @@ void GameScene::render(const GLuint program)
 
     assert(MapSize * MapSize <= getSize(rects_));
 
-    for (int i = 0; i < MapSize; ++i)
+    for (int j = 0; j < MapSize; ++j)
     {
-        for (int j = 0; j < MapSize; ++j)
+        for (int i = 0; i < MapSize; ++i)
         {
-            Rect& rect = rects_[j + i * MapSize];
-            rect.pos = {j * tileSize_, i * tileSize_};
-            rect.size = {tileSize_, tileSize_};
+            Rect& rect = rects_[j * MapSize + i];
+            rect.pos = vec2(i, j) * tileSize_;
+            rect.size = vec2(tileSize_);
             rect.color = {1.f, 1.f, 1.f, 1.f};
 
-            switch (tiles_[i][j])
+            switch (tiles_[j][i])
             {
                 case 0: rect.texRect = {0.f, 0.f, 64.f, 64.f};   break;
                 case 1: rect.texRect = {64.f, 0.f, 64.f, 64.f};  break;
@@ -731,13 +708,10 @@ void GameScene::render(const GLuint program)
     {
         // @ somewhat specific to the dynamite texture asset
         const float coeff = fabs(sinf(dynamites_[i].timer * 2.f)) * 0.4f;
+
         Rect& rect = rects_[i];
-
-        rect.size.x = tileSize_ + coeff * tileSize_;
-        rect.size.y = rect.size.x;
-
-        rect.pos = {dynamites_[i].tile.x * tileSize_ + (tileSize_ - rect.size.x) / 2.f,
-                    dynamites_[i].tile.y * tileSize_ + (tileSize_ - rect.size.y) / 2.f};
+        rect.size = vec2(tileSize_ + coeff * tileSize_);
+        rect.pos = vec2(dynamites_[i].tile) * tileSize_ + (vec2(tileSize_) - rect.size) / 2.f;
 
         // default values might be overwritten
         rect.color = {1.f, 1.f, 1.f, 1.f};
@@ -754,7 +728,7 @@ void GameScene::render(const GLuint program)
     for(Player& player: players_)
     {
         Rect rect;
-        rect.size = {tileSize_, tileSize_};
+        rect.size = vec2(tileSize_);
         rect.pos = player.pos;
 
         if(player.dmgTimer > 0.f)
@@ -788,11 +762,11 @@ void GameScene::render(const GLuint program)
 
     for(int i = 0; i < explosions_.size(); ++i)
     {
-        rects_[i].size = {explosions_[i].size, explosions_[i].size};
-        rects_[i].pos = {explosions_[i].tile.x * tileSize_ + (tileSize_ - rects_[i].size.x)
-                                                           / 2.f,
-                         explosions_[i].tile.y * tileSize_ + (tileSize_ - rects_[i].size.y)
-                                                           / 2.f};
+        rects_[i].size = vec2(explosions_[i].size);
+
+        rects_[i].pos = vec2(explosions_[i].tile) * tileSize_
+                        + ( vec2(tileSize_) - rects_[i].size ) / 2.f;
+
         rects_[i].color = explosions_[i].color;
         rects_[i].texRect = explosions_[i].anim.getCurrentFrame();
         rects_[i].texRect.x /= textures_.explosion.size.x;
@@ -850,8 +824,7 @@ void GameScene::render(const GLuint program)
         snprintf(buffer, getSize(buffer), "%.3f", timeToStart_);
         text.color = {1.f, 0.5f, 1.f, 0.8f};
         text.scale = 2.f;
-        const vec2 size = getTextSize(text, font_);
-        text.pos = {(MapSize * tileSize_ - size.x) / 2.f, 5.f};
+        text.pos = {(MapSize * tileSize_ - getTextSize(text, font_).x) / 2.f, 5.f};
 
         const int count = writeTextToBuffer(text, font_, rects_, getSize(rects_));
 
@@ -882,15 +855,14 @@ void GameScene::render(const GLuint program)
         }
 
         const vec2 textSize = getTextSize(text, font_);
-        text.pos = {(MapSize * tileSize_ - textSize.x) / 2.f,
-                    (MapSize * tileSize_ - textSize.y) / 2.f};
+        text.pos = ( vec2(MapSize) * tileSize_ - textSize ) / 2.f;
 
         // * background
         {
             const float border = 5.f;
             Rect rect;
-            rect.pos = {text.pos.x - border, text.pos.y - border};
-            rect.size = {textSize.x + 2.f * border, textSize.y + 2.f * border};
+            rect.pos = vec2(text.pos - border);
+            rect.size = textSize + 2.f * border;
             rect.color = {0.f, 0.f, 0.f, 0.85f};
             uniform1i(program, "mode", FragmentMode::Color);
             updateGLBuffers(glBuffers_, &rect, 1);
@@ -912,7 +884,7 @@ void GameScene::render(const GLuint program)
 
         const float lineSpace = text.scale * font_.lineSpace;
         Rect rect;
-        rect.size = {20.f, 20.f};
+        rect.size = vec2(20.f);
         rect.pos = {text.pos.x + textSize.x - rect.size.x, text.pos.y};
 
         for(const Player& player: players_)

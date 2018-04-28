@@ -18,19 +18,47 @@ constexpr int getSize(T(&)[N])
     return N;
 }
 
-// @TODO(matiTechno): add some operators / functions for vectors and refactor existing code
-
-struct ivec2
+template<typename T>
+struct tvec2
 {
-    int x;
-    int y;
+    tvec2() = default;
+    explicit tvec2(T v): x(v), y(v) {}
+    tvec2(T x, T y): x(x), y(y) {}
+
+    template<typename U>
+    explicit tvec2(tvec2<U> v): x(v.x), y(v.y) {}
+
+    //                @ const tvec2& ?
+    tvec2& operator+=(tvec2 v) {x += v.x; y += v.y; return *this;}
+    tvec2& operator+=(T v) {x += v; y += v; return *this;}
+    tvec2& operator-=(tvec2 v) {x -= v.x; y -= v.y; return *this;}
+    tvec2& operator-=(T v) {x -= v; y -= v; return *this;}
+    tvec2& operator*=(tvec2 v) {x *= v.x; y *= v.y; return *this;}
+    tvec2& operator*=(T v) {x *= v; y *= v; return *this;}
+    tvec2& operator/=(tvec2 v) {x /= v.x; y /= v.y; return *this;}
+    tvec2& operator/=(T v) {x /= v; y /= v; return *this;}
+
+    tvec2 operator+(tvec2 v) const {return {x + v.x, y + v.y};}
+    tvec2 operator+(T v)     const {return {x + v, y + v};}
+    tvec2 operator-(tvec2 v) const {return {x - v.x, y - v.y};}
+    tvec2 operator-(T v)     const {return {x - v, y - v};}
+    tvec2 operator*(tvec2 v) const {return {x * v.x, y * v.y};}
+    tvec2 operator*(T v)     const {return {x * v, y * v};}
+    tvec2 operator/(tvec2 v) const {return {x / v.x, y / v.y};}
+    tvec2 operator/(T v)     const {return {x / v, y / v};}
+
+    bool operator==(tvec2 v) const {return x == v.x && y == v.y;}
+    bool operator!=(tvec2 v) const {return !(*this == v);}
+
+    T x;
+    T y;
 };
 
-struct vec2
-{
-    float x;
-    float y;
-};
+template<typename T>
+inline tvec2<T> operator*(T scalar, tvec2<T> v) {return v * scalar;}
+
+using ivec2 = tvec2<int>;
+using vec2  = tvec2<float>;
 
 struct vec4
 {
@@ -342,7 +370,6 @@ private:
 
     GLBuffers glBuffers_;
     Rect rects_[MapSize * MapSize];
-    // @ store dynamites information in the tile table? (bit flags?)
     int tiles_[MapSize][MapSize] = {}; // initialized to 0
     Player players_[2];
     FixedArray<Dynamite, 50> dynamites_;

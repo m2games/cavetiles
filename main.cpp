@@ -543,9 +543,8 @@ int writeTextToBuffer(const Text& text, const Font& font, Rect* const buffer,
         const Glyph& glyph = font.glyphs[int(c)];
 
         Rect& rect = buffer[count];
-        // @TODO(matiTechno): vec2 add
-        rect.pos.x = penPos.x + glyph.offset.x * text.scale;
-        rect.pos.y = penPos.y + glyph.offset.y * text.scale;
+
+        rect.pos = penPos + glyph.offset * text.scale;
         rect.size.x = glyph.texRect.z * text.scale;
         rect.size.y = glyph.texRect.w * text.scale;
         rect.color = text.color;
@@ -638,9 +637,7 @@ public:
         text.scale = 0.9f;
         text.str = "m2games";
         text.color = {1.f, 1.f, 1.f, 0.7f};
-        const vec2 size = getTextSize(text, font_);
-        text.pos.x = (100.f - size.x) / 2.f;
-        text.pos.y = (100.f - size.y) / 2.f;
+        text.pos = (vec2(100.f) - getTextSize(text, font_)) / 2.f;
 
         name_.numRects = writeTextToBuffer(text, font_, name_.rects, getSize(name_.rects));
 
@@ -800,8 +797,7 @@ Camera expandToMatchAspectRatio(Camera camera, const vec2 viewportSize)
         camera.size.y = camera.size.x / viewportAspect;
     }
 
-    camera.pos.x -= (camera.size.x - prevSize.x) / 2.f;
-    camera.pos.y -= (camera.size.y - prevSize.y) / 2.f;
+    camera.pos -= (camera.size - prevSize) / 2.f;
     return camera;
 }
 
@@ -944,6 +940,9 @@ int main()
         {
             if(ImGui::Button("quit"))
                 glfwSetWindowShouldClose(window, true);
+
+            ImGui::Spacing();
+            ImGui::Text("framebuffer size: %d x %d", fbSize.x, fbSize.y);
 
             float max = 0.f;
             float sum = 0.f;
