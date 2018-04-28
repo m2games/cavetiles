@@ -222,7 +222,7 @@ Font createFontFromFile(const char* const filename, const int fontSize, const in
         glyph.texRect.y = pos.y;
 
         pos.x += glyph.texRect.z + 1;
-        maxBitmapSizeY = max(maxBitmapSizeY, glyph.texRect.w);
+        maxBitmapSizeY = max(maxBitmapSizeY, int(glyph.texRect.w));
     }
 
     font.texture.size = {textureWidth, pos.y + maxBitmapSizeY};
@@ -944,13 +944,13 @@ int main()
             ImGui::Spacing();
             ImGui::Text("framebuffer size: %d x %d", fbSize.x, fbSize.y);
 
-            float max = 0.f;
+            float maxTime = 0.f;
             float sum = 0.f;
 
             for(const float t: plot.frameTimes)
             {
                 sum += t;
-                max = max(max, t);
+                maxTime = max(maxTime, t);
             }
 
             const float avg = sum / getSize(plot.frameTimes);
@@ -960,7 +960,7 @@ int main()
             ImGui::PushStyleColor(ImGuiCol_Text, {0.f, 0.85f, 0.f, 1.f});
             ImGui::Text("avg   %.3f (%d)", avg, int(1.f / avg * 1000.f + 0.5f));
             ImGui::PushStyleColor(ImGuiCol_Text, {0.9f, 0.f, 0.f, 1.f});
-            ImGui::Text("max   %.3f", max);
+            ImGui::Text("max   %.3f", maxTime);
             ImGui::PopStyleColor(2);
             ImGui::Spacing();
             ImGui::PlotLines("", plot.frameTimes, getSize(plot.frameTimes), 0, nullptr, 0.f,

@@ -4,10 +4,11 @@
 #include "fmod/fmod.h"
 #include "float.h"
 
-#undef max
-#define max(a,b) ((a) > (b) ? (a) : (b))
-#undef min
-#define min(a,b) ((a) < (b) ? (a) : (b))
+template<typename T>
+inline T max(T a, T b) {return a > b ? a : b;}
+
+template<typename T>
+inline T min(T a, T b) {return a < b ? a : b;}
 
 using GLuint = unsigned int;
 
