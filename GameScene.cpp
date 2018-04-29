@@ -523,7 +523,7 @@ void GameScene::update()
                     bool hitPlayer = false;
                     for(Player& player: players_)
                     {
-                        if(getPlayerTile(player, tileSize_) == tile)
+                        if(getPlayerTile(player, tileSize_) == tile && player.hp)
                         {
                             player.hp -= 1;
                             player.dmgTimer = 1.2f;
