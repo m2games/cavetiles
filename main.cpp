@@ -206,6 +206,7 @@ Font createFontFromFile(const char* const filename, const int fontSize, const in
         bitmaps[i] = stbtt_GetGlyphBitmap(&fontInfo, scale, scale, idx, &size.x, &size.y,
                                           &offset.x, &offset.y);
 
+        assert(size.x <= textureWidth);
         glyph.offset.x = offset.x;
         glyph.offset.y = ascent + offset.y;
         glyph.texRect.z = size.x;
