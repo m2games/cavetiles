@@ -14,6 +14,21 @@ public:
     Array(const Array<T>&) = delete;
     Array<T>& operator=(const Array<T>&) = delete;
 
+    void swap(Array<T>& other)
+    {
+        int size = other.size_;
+        int capacity = other.capacity_;
+        T* data = other.data_;
+
+        other.size_ = size_;
+        other.capacity_ = capacity_;
+        other.data_ = data_;
+
+        size_ = size;
+        capacity_ = capacity;
+        data_ = data;
+    }
+
     void pushBack(const T& val)
     {
         ++size_;
@@ -49,11 +64,16 @@ public:
         return data_[i];
     }
     
-    // @ not tested
+    // @TODO(matiTechno): return iterator not reference
     T& erase(int i)
     {
-        memmove(data_ + i, data_ + i + 1, size_ - i - 1);
-        --size_;
+        return erase(i, 1);
+    }
+
+    T& erase(int i, int count)
+    {
+        memmove(data_ + i, data_ + i + count, size_ - i - count);
+        size_ -= count;
         return data_[i];
     }
 

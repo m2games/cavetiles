@@ -246,7 +246,53 @@ public:
                                    // game loop will call delete on it
     } frame_;
 };
+
 // GAME STRUCTURES
+
+namespace netcode
+{
+
+struct Cmd
+{
+    enum
+    {
+        _nil,
+        Ping,
+        Pong,
+        Name,
+        Chat,
+        _count
+    };
+};
+
+struct Client
+{
+    Client();
+    ~Client();
+    Client(const Client&) = delete;
+    Client(Client&&) = delete;
+    Client& operator=(const Client&) = delete;
+    Client& operator=(Client&&) = delete;
+
+    void update(float dt, const char* name); // dt in seconds
+
+    Array<char> sendBuf, recvBuf, logBuf;
+    int recvBufNumUsed = 0;
+    const int maxNameSize = 19;
+    const float timerAliveMax = 5.f;
+    const float timerReconnectMax = 5.f;
+    bool hasToReconnect = true;
+    int sockfd = -1;
+    float timerReconnect = timerReconnectMax;
+
+    // initialized in connect() (see cpp file)
+    bool serverAlive;
+    float timerAlive;
+};
+
+void addMsg(Array<char>& sendBuf, int cmd, const char* payload = "");
+
+} // netcode
 
 template<typename T>
 struct Range
@@ -334,6 +380,7 @@ struct Player
     float dropCooldown;
     int hp;
     int score = 0;
+    char name[20] = {};
 
     // for animation only
     float dmgTimer = 0.f;
@@ -404,4 +451,7 @@ private:
         bool right = false;
         bool drop = false;
     } actions_[2];
+
+    netcode::Client netClient_;
+    char nameBuf_[20]; // @TODO: will be incorrect if server won't accept it
 };

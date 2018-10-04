@@ -2,3 +2,4 @@ cavetiles
 *.trace
 *.ini
 *.dSYM
+.name

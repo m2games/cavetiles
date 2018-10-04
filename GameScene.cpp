@@ -4,6 +4,364 @@
 #include <math.h>
 #include <stdio.h>
 
+// includes for the netcode
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <string.h>
+#include <fcntl.h>
+#include <netinet/tcp.h>
+
+namespace netcode
+{
+
+const char* getCmdStr(int cmd)
+{
+    switch(cmd)
+    {
+        case Cmd::Ping: return "PING";
+        case Cmd::Pong: return "PONG";
+        case Cmd::Name: return "NAME";
+        case Cmd::Chat: return "CHAT";
+    }
+    assert(false);
+}
+
+void addMsg(Array<char>& sendBuf, int cmd, const char* payload)
+{
+    const char* cmdStr = getCmdStr(cmd);
+    int len = strlen(cmdStr) + strlen(payload) + 2; // ' ' + '\0'
+    int prevSize = sendBuf.size();
+    sendBuf.resize(prevSize + len);
+    assert(snprintf(sendBuf.data() + prevSize, len, "%s %s", cmdStr, payload) == len - 1);
+}
+
+const void* get_in_addr(const sockaddr* const sa)
+{
+    if(sa->sa_family == AF_INET)
+        return &( ( (sockaddr_in*)sa )->sin_addr );
+
+    return &( ( (sockaddr_in6*)sa )->sin6_addr );
+}
+
+void addLogMsg(Array<char>& buf, const char* const msg)
+{
+    if(buf.size() > 1000)
+        buf.clear();
+
+    int len = strlen(msg) + 1; // '\0'
+
+    int prevSize = buf.size();
+
+    if(prevSize)
+        prevSize -= 1; // so we will overwrite the null character
+
+    buf.resize(prevSize + len);
+    assert(snprintf(buf.data() + prevSize, len, "%s", msg) == len - 1);
+}
+
+void addLogMsgErno(Array<char>& buf, const char* const msg, bool gaiEc = 0)
+{
+    // this sucks, sucks, sucks...
+
+    addLogMsg(buf, msg);
+    addLogMsg(buf, ": ");
+
+    if(!gaiEc)
+        addLogMsg(buf, strerror(errno));
+    else
+        addLogMsg(buf, gai_strerror(gaiEc));
+
+    addLogMsg(buf, "\n");
+}
+
+// returns socket descriptior, -1 if failed
+// if succeeded you have to free the socket yourself
+// @TODO: this must be non-blocking connect
+int connect(Array<char>& logBuf)
+{
+    addrinfo hints = {};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    addrinfo* list;
+    {
+        // this block (domain name resolution)
+        const int ec = getaddrinfo("localhost", "3000", &hints, &list);
+        if(ec != 0)
+        {
+            addLogMsgErno(logBuf, "getaddrinfo() failed", ec);
+            return -1;
+        }
+    }
+
+    int sockfd;
+
+    const addrinfo* it;
+    for(it = list; it != nullptr; it = it->ai_next)
+    {
+        sockfd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
+        if(sockfd == -1)
+        {
+            addLogMsgErno(logBuf, "socket() failed");
+            
+            continue;
+        }
+
+        if(connect(sockfd, it->ai_addr, it->ai_addrlen) == -1)
+        {
+            close(sockfd);
+
+            addLogMsgErno(logBuf, "connect() failed");
+
+            continue;
+        }
+
+        char name[INET6_ADDRSTRLEN];
+        inet_ntop(it->ai_family, get_in_addr(it->ai_addr), name, sizeof(name));
+
+        // fuck...
+        addLogMsg(logBuf, "connected to ");
+        addLogMsg(logBuf, name);
+        addLogMsg(logBuf, "\n");
+        break;
+    }
+    freeaddrinfo(list);
+
+    if(it == nullptr)
+    {
+        addLogMsg(logBuf, "connection procedure failed\n");
+        return -1;
+    }
+
+    if(fcntl(sockfd, F_SETFL, O_NONBLOCK) == -1)
+    {
+        close(sockfd);
+
+        addLogMsgErno(logBuf, "fcntl() failed");
+
+        return -1;
+    }
+
+    {
+        const int option = 1;
+        if(setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &option, sizeof(option)) == -1)
+        {
+            close(sockfd);
+
+            addLogMsgErno(logBuf, "setsockopt() (TCP_NODELAY) failed");
+
+            return -1;
+        }
+    }
+
+    return sockfd;
+}
+
+Client::Client()
+{
+    sendBuf.reserve(500);
+    recvBuf.resize(500);
+    logBuf.reserve(500);
+    addLogMsg(logBuf, ""); // to terminate with null
+}
+
+Client::~Client()
+{
+    if(sockfd != -1)
+        close(sockfd);
+}
+
+void Client::update(const float dt, const char* name)
+{
+    // time managment
+    timerAlive += dt;
+    timerReconnect += dt;
+
+    if(hasToReconnect)
+    {
+        if(timerReconnect >= timerReconnectMax)
+        {
+            timerReconnect = 0.f;
+
+            if(sockfd != -1)
+                close(sockfd);
+
+            sockfd = connect(logBuf);
+
+            if(sockfd != -1)
+            {
+                serverAlive = true;
+                timerAlive = timerAliveMax;
+                hasToReconnect = false;
+                sendBuf.clear();
+
+                // send the player name
+                int len = strlen(name);
+                assert(len < maxNameSize);
+                assert(len);
+                
+                addMsg(sendBuf, Cmd::Name, name);
+            }
+        }
+    }
+
+    // update
+    if(!hasToReconnect)
+    {
+        if(timerAlive > timerAliveMax)
+        {
+            timerAlive = 0.f;
+
+            if(serverAlive)
+            {
+                serverAlive = false;
+                addMsg(sendBuf, Cmd::Ping);
+            }
+            else
+            {
+                hasToReconnect = true;
+                addLogMsg(logBuf, "no PONG response from server, will try to reconnect\n");
+            }
+        }
+    }
+
+    // receive
+    if(!hasToReconnect)
+    {
+        while(true)
+        {
+            const int numFree = recvBuf.size() - recvBufNumUsed;
+            const int rc = recv(sockfd, recvBuf.data() + recvBufNumUsed, numFree, 0);
+
+            if(rc == -1)
+            {
+                if(errno != EAGAIN || errno != EWOULDBLOCK)
+                {
+                    addLogMsgErno(logBuf, "recv() failed");
+
+                    hasToReconnect = true;
+                }
+                break;
+            }
+            else if(rc == 0)
+            {
+                addLogMsg(logBuf, "server has closed the connection\n");
+                hasToReconnect = true;
+                break;
+            }
+            else
+            {
+                recvBufNumUsed += rc;
+
+                if(recvBufNumUsed < recvBuf.size())
+                    break;
+
+                recvBuf.resize(recvBuf.size() * 2);
+                if(recvBuf.size() > 10000)
+                {
+                    addLogMsg(logBuf, "recvBuf big size issue, exiting\n");
+                    assert(false);
+                    break;
+                }
+            }
+        }
+    }
+
+    // process received data
+    {
+        const char* end = recvBuf.data();
+        const char* begin;
+
+        while(true)
+        {
+            begin = end;
+            {
+                const char* tmp = (const char*)memchr((const void*)end, '\0',
+                                   recvBuf.data() + recvBufNumUsed - end);
+
+                if(tmp == nullptr) break;
+                end = tmp;
+            }
+
+            ++end;
+
+            //printf("received msg: '%s'\n", begin);
+
+            int cmd = 0;
+            for(int i = 1; i < Cmd::_count; ++i)
+            {
+                const char* const cmdStr = getCmdStr(i);
+                const int cmdLen = strlen(cmdStr);
+
+                if(cmdLen > int(strlen(begin)))
+                    continue;
+
+                if(strncmp(begin, cmdStr, cmdLen) == 0)
+                {
+                    cmd = i;
+                    begin += cmdLen + 1; // ' '
+                    break;
+                }
+            }
+
+            switch(cmd)
+            {
+                case 0:
+                    // fuck...
+
+                    addLogMsg(logBuf, "WARNING unknown command received: ");
+                    addLogMsg(logBuf, begin);
+                    addLogMsg(logBuf, "\n");
+
+                    break;
+
+                case Cmd::Ping:
+                    addMsg(sendBuf, Cmd::Pong);
+                    break;
+
+                case Cmd::Pong:
+                    serverAlive = true;
+                    break;
+
+                case Cmd::Name:
+                    hasToReconnect = true;
+                    addLogMsg(logBuf, "name already in use, try something different\n");
+                    break;
+
+                case Cmd::Chat:
+                    addLogMsg(logBuf, begin);
+                    addLogMsg(logBuf, "\n");
+                    break;
+            }
+        }
+
+        const int numToFree = end - recvBuf.data();
+        memmove(recvBuf.data(), recvBuf.data() + numToFree, recvBufNumUsed - numToFree);
+        recvBufNumUsed -= numToFree;
+    }
+
+    // send
+    if(!hasToReconnect && sendBuf.size())
+    {
+        const int rc = send(sockfd, sendBuf.data(), sendBuf.size(), 0);
+
+        if(rc == -1)
+        {
+            addLogMsgErno(logBuf, "send() failed");
+
+            hasToReconnect = true;
+        }
+        else
+            sendBuf.erase(0, rc);
+    }
+}
+
+} // netcode
+
 // copuled to the explosion texture asset
 Anim createExplosionAnim()
 {
@@ -168,6 +526,20 @@ float dot(const vec2 v1, const vec2 v2)
 
 GameScene::GameScene()
 {
+    for(int i = 0; i < getSize(players_); ++i)
+        sprintf(players_[i].name, "player%d", i);
+
+    {
+        FILE* file;
+        file = fopen(".name", "r");
+
+        if(file)
+        {
+            fgets(nameBuf_, sizeof(nameBuf_), file);
+            assert(!fclose(file));
+        }
+    }
+
     assert(MapSize % 2);
 
     {
@@ -451,6 +823,8 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
 void GameScene::update()
 {
+    netClient_.update(frame_.time, nameBuf_);
+
     // emitter
 
     emitter_.update(frame_.time);
@@ -919,5 +1293,24 @@ void GameScene::render(const GLuint program)
                 "player2:\n"
                 "   ARROWS - move\n"
                 "   SPACE  - drop a bomb\n");
+
+    ImGui::Spacing();
+
+    if(ImGui::InputText("name", nameBuf_, sizeof(nameBuf_), ImGuiInputTextFlags_EnterReturnsTrue))
+    {
+        FILE* file;
+        file = fopen(".name", "w");
+        assert(file);
+        fputs(nameBuf_, file);
+        assert(!fclose(file));
+
+        netcode::addMsg(netClient_.sendBuf, netcode::Cmd::Name, nameBuf_);
+    }
+
+    ImGui::Spacing();
+    ImGui::Text("netcode::Client log");
+    ImGui::InputTextMultiline("##netcode::Client log", netClient_.logBuf.data(),
+        netClient_.logBuf.size(), ImVec2(300.f, 0.f), ImGuiInputTextFlags_ReadOnly);
+
     ImGui::End();
 }
