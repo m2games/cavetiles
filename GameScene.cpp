@@ -1182,11 +1182,37 @@ void GameScene::render(const GLuint program)
 
             rect += 2;
         }
+
+        uniform1i(program, "mode", FragmentMode::Color);
+        updateGLBuffers(glBuffers_, rects_, getSize(players_) * 2.f);
+        renderGLBuffers(glBuffers_, getSize(players_) * 2.f);
     }
 
-    uniform1i(program, "mode", FragmentMode::Color);
-    updateGLBuffers(glBuffers_, rects_, getSize(players_) * 2.f);
-    renderGLBuffers(glBuffers_, getSize(players_) * 2.f);
+    // @ the quality of this texts depends on map size...
+    // names
+    {
+        uniform1i(program, "mode", FragmentMode::Font);
+        bindTexture(font_.texture);
+
+        int textCount = 0;
+
+        Text text;
+        text.color = {0.1f, 1.f, 0.1f, 0.85f};
+        text.scale = 0.15f;
+
+        for(Player& player: players_)
+        {
+            text.str = player.name;
+            text.pos = player.pos;
+            text.pos.y -= 6.f;
+
+            textCount += writeTextToBuffer(text, font_, rects_ + textCount, getSize(rects_));
+        }
+
+        updateGLBuffers(glBuffers_, rects_, textCount);
+        renderGLBuffers(glBuffers_, textCount);
+    }
+
 
     // new round timer
 
