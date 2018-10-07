@@ -652,7 +652,11 @@ void Simulation::processPlayerInput(const Action& action, const char* name)
                 pptr = &p;
     }
 
-    assert(pptr);
+    //assert(pptr);
+    // @ temp fix for client to work
+    if(!pptr)
+        return;
+
     Player& player = *pptr;
 
     if(player.dir)
@@ -1023,9 +1027,13 @@ void GameScene::processInput(const Array<WinEvent>& events)
 
     for(int i = 0; i < getSize(actions_); ++i)
     {
+        const char* name = netClient_.hasToReconnect ? sim_.players_[i].name : nameBuf_;
         Action& action = actions_[i];
-        sim_.processPlayerInput(action, sim_.players_[i].name);
+        sim_.processPlayerInput(action, name);
         action.drop = false;
+
+        if(!netClient_.hasToReconnect)
+            break;
     }
 }
 
@@ -1250,8 +1258,8 @@ void GameScene::render(const GLuint program)
         renderGLBuffers(glBuffers_, getSize(sim_.players_) * 2.f);
     }
 
-    // @ the quality of this texts depends on map size...
     // names
+    if(!netClient_.hasToReconnect)
     {
         uniform1i(program, "mode", FragmentMode::Font);
         bindTexture(font_.texture);

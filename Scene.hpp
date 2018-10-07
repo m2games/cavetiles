@@ -480,6 +480,7 @@ private:
     } sounds_;
 
     netcode::Client netClient_;
+    // this needs fix :D
     char nameBuf_[20]; // @TODO: will be incorrect if server won't accept it
     Simulation sim_;
     PlayerView playerViews_[2];
