@@ -24,10 +24,13 @@ const char* getCmdStr(int cmd)
 {
     switch(cmd)
     {
-        case Cmd::Ping: return "PING";
-        case Cmd::Pong: return "PONG";
-        case Cmd::Name: return "NAME";
-        case Cmd::Chat: return "CHAT";
+        case Cmd::Ping:       return "PING";
+        case Cmd::Pong:       return "PONG";
+        case Cmd::Chat:       return "CHAT";
+        case Cmd::GameFull:   return "GAME_FULL";
+        case Cmd::SetName:    return "SET_NAME";
+        case Cmd::NameOk:     return "NAME_OK";
+        case Cmd::MustRename: return "MUST_RENAME";
     }
     assert(false);
 }
@@ -185,9 +188,13 @@ void Client::update(const float dt, const char* name, FixedArray<ExploEvent, 50>
     // time managment
     timerAlive += dt;
     timerReconnect += dt;
+    timerSendSetNameMsg += dt;
 
     if(hasToReconnect)
     {
+        simReadyToSync = false;
+        inGame = false;
+
         if(timerReconnect >= timerReconnectMax)
         {
             timerReconnect = 0.f;
@@ -203,15 +210,20 @@ void Client::update(const float dt, const char* name, FixedArray<ExploEvent, 50>
                 timerAlive = timerAliveMax;
                 hasToReconnect = false;
                 sendBuf.clear();
-
-                // send the player name
-                int len = strlen(name);
-                assert(len < maxNameSize);
-                assert(len);
-                
-                addMsg(sendBuf, Cmd::Name, name);
+                sendSetNameMsg = true;
             }
         }
+    }
+
+    if(sendSetNameMsg && (timerSendSetNameMsg >= timerReconnectMax))
+    {
+        sendSetNameMsg = false;
+        timerSendSetNameMsg = 0.f;
+
+        int len = strlen(name);
+        assert(len < maxNameSize);
+        assert(len);
+        addMsg(sendBuf, Cmd::SetName, name);
     }
 
     // update
@@ -332,15 +344,42 @@ void Client::update(const float dt, const char* name, FixedArray<ExploEvent, 50>
                     serverAlive = true;
                     break;
 
-                case Cmd::Name:
-                    hasToReconnect = true;
-                    addLogMsg(logBuf, "name already in use, try something different\n");
-                    break;
-
                 case Cmd::Chat:
                     addLogMsg(logBuf, begin);
                     addLogMsg(logBuf, "\n");
                     break;
+
+                case Cmd::GameFull:
+                {
+                    addLogMsg(logBuf, "GAME_FULL\n");
+                    sendSetNameMsg = true;
+                    break;
+                }
+
+                case Cmd::NameOk:
+                {
+                    addLogMsg(logBuf, "NAME_OK\n");
+                    inGame = true;
+                    int len = strlen(begin);
+                    assert(len <= maxNameSize);
+                    memcpy(inGameName, begin, len);
+                    inGameName[len] = '\0';
+                    break;
+                }
+
+                case Cmd::MustRename:
+                {
+                    if(inGame)
+                        addLogMsg(logBuf, "MUST_RENAME: could not rename\n");
+
+                    else
+                    {
+                        addLogMsg(logBuf, "MUST_RENAME: could not join\n");
+                        sendSetNameMsg = true;
+                    }
+
+                    break;
+                }
             }
         }
 
@@ -914,7 +953,7 @@ GameScene::GameScene()
 
         if(file)
         {
-            fgets(nameBuf_, sizeof(nameBuf_), file);
+            fgets(nameToSetBuf_, sizeof(nameToSetBuf_), file);
             assert(!fclose(file));
         }
     }
@@ -1035,7 +1074,8 @@ void GameScene::processInput(const Array<WinEvent>& events)
         }
     }
 
-    if(!netClient_.hasToReconnect)
+    // @TODO: do the simulation on the client even if playing online (interpolation)
+    if(netClient_.inGame)
         return;
 
     assert(getSize(sim_.players_) >= getSize(actions_));
@@ -1051,20 +1091,15 @@ void GameScene::update()
 {
     exploEvents_.clear();
 
-    netClient_.update(frame_.time, nameBuf_, exploEvents_, actions_[0]);
+    netClient_.update(frame_.time, nameToSetBuf_, exploEvents_, actions_[0]);
 
-    // @TODO: do the simulation on the client even if connected to server
-    if(netClient_.hasToReconnect)
+    // @TODO: do the simulation on the client even if playing online (interpolation)
+    if(!netClient_.inGame)
         sim_.update(frame_.time, exploEvents_);
 
-    // sync the local simulation with the one on the server; for now without interpolating
-    else
-    {
-        // @ enable after implementing simulation protocol; make sure netClient_.sim
-        // contains valid data
-        // memcpy(&sim_, netClient_.sim, sizeof(Simulation);
-    }
-
+    // @TODO: interpolation
+    else if(netClient_.simReadyToSync)
+        memcpy(&sim_, &netClient_.sim, sizeof(Simulation));
 
     emitter_.update(frame_.time);
 
@@ -1281,7 +1316,7 @@ void GameScene::render(const GLuint program)
     }
 
     // names
-    if(!netClient_.hasToReconnect)
+    if(netClient_.inGame)
     {
         uniform1i(program, "mode", FragmentMode::Font);
         bindTexture(font_.texture);
@@ -1417,21 +1452,41 @@ void GameScene::render(const GLuint program)
 
     ImGui::Spacing();
 
-    if(ImGui::InputText("name", nameBuf_, sizeof(nameBuf_), ImGuiInputTextFlags_EnterReturnsTrue))
+    if(netClient_.inGame)
+        ImGui::TextColored(ImVec4(0.f, 1.f, 0.f, 1.f), "logged as '%s'", netClient_.inGameName);
+    else
+        ImGui::TextColored(ImVec4(1.f, 0.3f, 0.f, 1.f), "status: disconnected");
+
+    if(ImGui::InputText("login name", inputNameBuf_, sizeof(inputNameBuf_),
+                ImGuiInputTextFlags_EnterReturnsTrue))
     {
+        assert(sizeof(nameToSetBuf_) == sizeof(inputNameBuf_));
+
+        memcpy(nameToSetBuf_, inputNameBuf_, sizeof(nameToSetBuf_));
+
         FILE* file;
         file = fopen(".name", "w");
         assert(file);
-        fputs(nameBuf_, file);
+        fputs(nameToSetBuf_, file);
         assert(!fclose(file));
 
-        netcode::addMsg(netClient_.sendBuf, netcode::Cmd::Name, nameBuf_);
+        netcode::addMsg(netClient_.sendBuf, netcode::Cmd::SetName, nameToSetBuf_);
     }
 
     ImGui::Spacing();
     ImGui::Text("netcode::Client log");
     ImGui::InputTextMultiline("##netcode::Client log", netClient_.logBuf.data(),
         netClient_.logBuf.size(), ImVec2(300.f, 0.f), ImGuiInputTextFlags_ReadOnly);
+
+    ImGui::Spacing();
+    ImGui::Text("send chat msg");
+
+    if(ImGui::InputText("##chatbuf", chatBuf_, sizeof(chatBuf_),
+                ImGuiInputTextFlags_EnterReturnsTrue))
+    {
+        addMsg(netClient_.sendBuf, netcode::Cmd::Chat, chatBuf_);
+        chatBuf_[0] = '\0';
+    }
 
     ImGui::End();
 }

@@ -419,10 +419,17 @@ struct Cmd
     enum
     {
         _nil,
+
         Ping,
         Pong,
-        Name,
         Chat,
+        GameFull,
+
+        // name cmds have the name as the payload
+        SetName,
+        NameOk,
+        MustRename,
+
         _count
     };
 };
@@ -445,9 +452,14 @@ struct Client
     const int maxNameSize = 19;
     const float timerAliveMax = 5.f;
     const float timerReconnectMax = 5.f;
-    bool hasToReconnect = true;
+    bool hasToReconnect = true; // due to tcp error or no server response
     int sockfd = -1;
     float timerReconnect = timerReconnectMax;
+    bool simReadyToSync = false;
+    bool inGame = false;
+    char inGameName[20]; // this will be used to identify the player in Simulation
+    bool sendSetNameMsg = false;
+    float timerSendSetNameMsg = timerReconnectMax;
 
     // initialized in connect() (see cpp file)
     bool serverAlive;
@@ -477,7 +489,7 @@ private:
     FixedArray<Explosion, 50> explosions_;
     Emitter emitter_;
     Font font_;
-    bool showScore_;
+    bool showScore_ = true;
 
     struct
     {
@@ -495,8 +507,9 @@ private:
     } sounds_;
 
     netcode::Client netClient_;
-    // this needs fix :D
-    char nameBuf_[20]; // @TODO: will be incorrect if server won't accept it
+    char nameToSetBuf_[20] = "player1";
+    char inputNameBuf_[20] = {}; // flush to nameToSetBuf_ on ENTER
+    char chatBuf_[128] = {};
     Simulation sim_;
     PlayerView playerViews_[2];
     Action actions_[2];
