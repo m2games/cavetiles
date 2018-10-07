@@ -249,51 +249,6 @@ public:
 
 // GAME STRUCTURES
 
-namespace netcode
-{
-
-struct Cmd
-{
-    enum
-    {
-        _nil,
-        Ping,
-        Pong,
-        Name,
-        Chat,
-        _count
-    };
-};
-
-struct Client
-{
-    Client();
-    ~Client();
-    Client(const Client&) = delete;
-    Client(Client&&) = delete;
-    Client& operator=(const Client&) = delete;
-    Client& operator=(Client&&) = delete;
-
-    void update(float dt, const char* name); // dt in seconds
-
-    Array<char> sendBuf, recvBuf, logBuf;
-    int recvBufNumUsed = 0;
-    const int maxNameSize = 19;
-    const float timerAliveMax = 5.f;
-    const float timerReconnectMax = 5.f;
-    bool hasToReconnect = true;
-    int sockfd = -1;
-    float timerReconnect = timerReconnectMax;
-
-    // initialized in connect() (see cpp file)
-    bool serverAlive;
-    float timerAlive;
-};
-
-void addMsg(Array<char>& sendBuf, int cmd, const char* payload = "");
-
-} // netcode
-
 template<typename T>
 struct Range
 {
@@ -393,15 +348,16 @@ struct PlayerView
 
 struct Bomb
 {
-    void addPlayer(const Player& player);
-    void removePlayer(const Player& player);
-    bool findPlayer(const Player& player) const;
+    void addPlayer(int idx);
+    void removePlayer(int idx);
+    bool findPlayer(int idx) const;
 
     ivec2 tile;
     int range = 2;
     float timer;
+
     // players allowed to stand on a bomb (used for resolving collisions)
-    const Player* players[2] = {}; // initialized to 0
+    int playerIdxs[2] = {-1, -1};
 };
 
 struct ExploEvent
@@ -431,21 +387,80 @@ struct Action // @TODO: rename to PlayerAction?
 struct Simulation
 {
     Simulation();
-
     void setNewGame();
     void processPlayerInput(const Action& action, const char* name);
     void update(float dt, FixedArray<ExploEvent, 50>& exploEvents); // in seconds
 
     enum {MapSize = 13, HP = 3};
-    const float dropCooldown_ = 1.f;
-    const float tileSize_ = 20.f;
+    static const float dropCooldown_;
+    static const float tileSize_;
+    static const vec2 dirVecs_[Dir::Count];
+
+    // this must be serializable !!! (memcpy for now (on the client side); server sends it as
+    // readable text)
 
     int tiles_[MapSize][MapSize] = {}; // initialized to 0
-    vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     Player players_[2];
     FixedArray<Bomb, 50> bombs_;
     float timeToStart_ = 0.f;
 };
+
+#define SIM_STATIC_DEF \
+    const float Simulation::dropCooldown_ = 1.f; \
+    const float Simulation::tileSize_ = 20.f; \
+    const vec2  Simulation::dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, \
+        {-1.f, 0.f}, {1.f, 0.f}};
+
+namespace netcode
+{
+
+struct Cmd
+{
+    enum
+    {
+        _nil,
+        Ping,
+        Pong,
+        Name,
+        Chat,
+        _count
+    };
+};
+
+struct Client
+{
+    Client();
+    ~Client();
+    Client(const Client&) = delete;
+    Client(Client&&) = delete;
+    Client& operator=(const Client&) = delete;
+    Client& operator=(Client&&) = delete;
+
+    // dt is seconds
+    void update(float dt, const char* name,
+                FixedArray<ExploEvent, 50>& eevents, Action& playerAction);
+
+    Array<char> sendBuf, recvBuf, logBuf;
+    int recvBufNumUsed = 0;
+    const int maxNameSize = 19;
+    const float timerAliveMax = 5.f;
+    const float timerReconnectMax = 5.f;
+    bool hasToReconnect = true;
+    int sockfd = -1;
+    float timerReconnect = timerReconnectMax;
+
+    // initialized in connect() (see cpp file)
+    bool serverAlive;
+    float timerAlive;
+
+    Simulation sim;
+};
+
+// use this to e.g. send a chat message
+void addMsg(Array<char>& sendBuf, int cmd, const char* payload = "");
+
+} // netcode
+
 
 class GameScene: public Scene
 {

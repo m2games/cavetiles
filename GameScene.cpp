@@ -15,6 +15,8 @@
 #include <fcntl.h>
 #include <netinet/tcp.h>
 
+SIM_STATIC_DEF
+
 namespace netcode
 {
 
@@ -175,8 +177,11 @@ Client::~Client()
         close(sockfd);
 }
 
-void Client::update(const float dt, const char* name)
+void Client::update(const float dt, const char* name, FixedArray<ExploEvent, 50>& eevents,
+                    Action& playerAction)
 {
+    // @TODO: push new events to eevents; send playerAction to server; update simulation
+
     // time managment
     timerAlive += dt;
     timerReconnect += dt;
@@ -375,38 +380,38 @@ Anim createExplosionAnim()
     return anim;
 }
 
-void Bomb::addPlayer(const Player& player)
+void Bomb::addPlayer(const int idx)
 {
-    for(const Player*& p: players)
+    for(int& i: playerIdxs)
     {
-        assert(p != &player);
-        if(p == nullptr)
+        assert(i != idx);
+        if(i == -1)
         {
-            p = &player;
+            i = idx;
             return;
         }
     }
     assert(false);
 }
 
-void Bomb::removePlayer(const Player& player)
+void Bomb::removePlayer(const int idx)
 {
-    for(const Player*& p: players)
+    for(int& i: playerIdxs)
     {
-        if(p == &player)
+        if(i == idx)
         {
-            p = nullptr;
+            i = -1;
             return;
         }
     }
     assert(false);
 }
 
-bool Bomb::findPlayer(const Player& player) const
+bool Bomb::findPlayer(const int idx) const
 {
-    for(const Player* const p: players)
+    for(const int i: playerIdxs)
     {
-        if(p == &player)
+        if(i == idx)
             return true;
     }
     return false;
@@ -530,7 +535,7 @@ Simulation::Simulation()
 
     {
         Bomb bomb;
-        assert(getSize(bomb.players) == getSize(players_));
+        assert(getSize(bomb.playerIdxs) == getSize(players_));
     }
 
     for(int i = 0; i < getSize(players_); ++i)
@@ -652,10 +657,7 @@ void Simulation::processPlayerInput(const Action& action, const char* name)
                 pptr = &p;
     }
 
-    //assert(pptr);
-    // @ temp fix for client to work
-    if(!pptr)
-        return;
+    assert(pptr);
 
     Player& player = *pptr;
 
@@ -692,7 +694,10 @@ void Simulation::processPlayerInput(const Action& action, const char* name)
             for(const Player& player: players_)
             {
                 if(isCollision(player.pos, targetTile, tileSize_))
-                    bomb.addPlayer(player);
+                {
+                    const int playerIdx = &player - players_;
+                    bomb.addPlayer(playerIdx);
+                }
             }
 
             bombs_.pushBack(bomb);
@@ -785,8 +790,12 @@ void Simulation::update(float dt, FixedArray<ExploEvent, 50>& exploEvents)
 
     // players
 
+    int playerIdx = -1;
+
     for(Player& player: players_)
     {
+        ++playerIdx;
+
         player.pos += player.vel * dt * dirVecs_[player.dir];
         player.dropCooldown -= dt;
         player.dropCooldown = max(0.f, player.dropCooldown);
@@ -802,7 +811,7 @@ void Simulation::update(float dt, FixedArray<ExploEvent, 50>& exploEvents)
         for(Bomb& bomb: bombs_)
         {
             const bool collision = isCollision(player.pos, bomb.tile, tileSize_);
-            const bool allowed = bomb.findPlayer(player);
+            const bool allowed = bomb.findPlayer(playerIdx);
 
             if(collision && !allowed)
             {
@@ -813,7 +822,7 @@ void Simulation::update(float dt, FixedArray<ExploEvent, 50>& exploEvents)
             }
             else if(!collision && allowed)
             {
-                bomb.removePlayer(player);
+                bomb.removePlayer(playerIdx);
             }
         }
 
@@ -987,6 +996,9 @@ GameScene::~GameScene()
 
 void GameScene::processInput(const Array<WinEvent>& events)
 {
+    for(Action& action: actions_)
+        action.drop = false;
+
     const bool gameStarted = sim_.timeToStart_ <= 0.f;
 
     if(!gameStarted)
@@ -1023,26 +1035,36 @@ void GameScene::processInput(const Array<WinEvent>& events)
         }
     }
 
+    if(!netClient_.hasToReconnect)
+        return;
+
     assert(getSize(sim_.players_) >= getSize(actions_));
 
     for(int i = 0; i < getSize(actions_); ++i)
     {
-        const char* name = netClient_.hasToReconnect ? sim_.players_[i].name : nameBuf_;
         Action& action = actions_[i];
-        sim_.processPlayerInput(action, name);
-        action.drop = false;
-
-        if(!netClient_.hasToReconnect)
-            break;
+        sim_.processPlayerInput(action, sim_.players_[i].name);
     }
 }
 
 void GameScene::update()
 {
-    netClient_.update(frame_.time, nameBuf_);
-
     exploEvents_.clear();
-    sim_.update(frame_.time, exploEvents_);
+
+    netClient_.update(frame_.time, nameBuf_, exploEvents_, actions_[0]);
+
+    // @TODO: do the simulation on the client even if connected to server
+    if(netClient_.hasToReconnect)
+        sim_.update(frame_.time, exploEvents_);
+
+    // sync the local simulation with the one on the server; for now without interpolating
+    else
+    {
+        // @ enable after implementing simulation protocol; make sure netClient_.sim
+        // contains valid data
+        // memcpy(&sim_, netClient_.sim, sizeof(Simulation);
+    }
+
 
     emitter_.update(frame_.time);
 
