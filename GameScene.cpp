@@ -524,22 +524,8 @@ float dot(const vec2 v1, const vec2 v2)
     return v1.x * v2.x + v1.y * v2.y;
 }
 
-GameScene::GameScene()
+Simulation::Simulation()
 {
-    for(int i = 0; i < getSize(players_); ++i)
-        sprintf(players_[i].name, "player%d", i);
-
-    {
-        FILE* file;
-        file = fopen(".name", "r");
-
-        if(file)
-        {
-            fgets(nameBuf_, sizeof(nameBuf_), file);
-            assert(!fclose(file));
-        }
-    }
-
     assert(MapSize % 2);
 
     {
@@ -547,69 +533,13 @@ GameScene::GameScene()
         assert(getSize(bomb.players) == getSize(players_));
     }
 
-    glBuffers_ = createGLBuffers();
-
-    font_ = createFontFromFile("res/Exo2-Black.otf", 38, 512);
-
-    textures_.tile = createTextureFromFile("res/tiles.png");
-    textures_.player1 = createTextureFromFile("res/player1.png");
-    textures_.player2 = createTextureFromFile("res/player2.png");
-    textures_.bomb = createTextureFromFile("res/bomb000.png");
-    textures_.explosion = createTextureFromFile("res/Explosion.png");
-
-    FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_various6.wav",
-                                    FMOD_CREATESAMPLE, nullptr, &sounds_.bomb) );
-
-    FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_short_hard15.wav",
-                                    FMOD_CREATESAMPLE, nullptr, &sounds_.crateExplosion) );
-
-    emitter_.spawn.size = vec2(5.f);
-    emitter_.spawn.pos = vec2(210.f);
-    assert(emitter_.spawn.pos.x <= (MapSize - 1) * tileSize_);
-    emitter_.spawn.hz = 100.f;
-    emitter_.particleRanges.life = {3.f, 6.f};
-    emitter_.particleRanges.size = {0.25f, 2.f};
-    emitter_.particleRanges.vel = {{-3.5f, -30.f}, {3.5f, -2.f}};
-    emitter_.particleRanges.color = {{0.1f, 0.f, 0.f, 0.f}, {0.5f, 0.25f, 0.f, 0.f}};
-    emitter_.reserve();
-
-    for(Player& player: players_)
+    for(int i = 0; i < getSize(players_); ++i)
     {
+        Player& player = players_[i];
+
+        sprintf(player.name, "player%d", i);
+
         player.vel = 80.f;
-    }
-
-    // specific configuration for each player
-    assert(getSize(players_) == 2);
-
-    players_[0].texture = &textures_.player1;
-    players_[1].texture = &textures_.player2;
-
-    // tightly coupled to the texture assets
-    for(int i = Dir::Up; i < Dir::Count; ++i)
-    {
-        Anim anim;
-        anim.frameDt = 0.06f;
-        anim.numFrames = 4;
-        const float frameSize = 48.f;
-
-        int x;
-        switch(i)
-        {
-            case Dir::Up:    x = 2; break;
-            case Dir::Down:  x = 0; break;
-            case Dir::Left:  x = 1; break;
-            case Dir::Right: x = 3; break;
-        }
-
-        for(int i = 0; i < anim.numFrames; ++i)
-        {
-            anim.frames[i] = {frameSize * x, frameSize * i, frameSize, frameSize};
-        }
-
-        for(int j = 0; j < 2; ++j)
-        {
-            players_[j].anims[i] = anim;
-        }
     }
 
     // tilemap
@@ -636,29 +566,15 @@ GameScene::GameScene()
     setNewGame();
 }
 
-GameScene::~GameScene()
+void Simulation::setNewGame()
 {
-    deleteGLBuffers(glBuffers_);
-    deleteFont(font_);
-    deleteTexture(textures_.tile);
-    deleteTexture(textures_.player1);
-    deleteTexture(textures_.player2);
-    deleteTexture(textures_.bomb);
-    deleteTexture(textures_.explosion);
-    FCHECK( FMOD_Sound_Release(sounds_.bomb) );
-    FCHECK( FMOD_Sound_Release(sounds_.crateExplosion) );
-}
-
-void GameScene::setNewGame()
-{
-    showScore_ = false;
     bombs_.clear();
 
     for(Player& player: players_)
     {
         player.dropCooldown = 0.f;
         player.hp = HP;
-        // so player.prevDir won't be overwritten in processInput()
+        // so player.prevDir (***) won't be overwritten in processPlayerInput()
         player.dir = Dir::Nil;
     }
 
@@ -666,7 +582,7 @@ void GameScene::setNewGame()
     assert(getSize(players_) == 2);
 
     players_[0].pos = vec2(tileSize_ * 1);
-    players_[0].prevDir = Dir::Down;
+    players_[0].prevDir = Dir::Down; // ***
 
     players_[1].pos = vec2(tileSize_ * (MapSize - 2));
     players_[1].prevDir = Dir::Left;
@@ -723,133 +639,76 @@ end:;
     }
 }
 
-void GameScene::processInput(const Array<WinEvent>& events)
+void Simulation::processPlayerInput(const Action& action, const char* name)
 {
-    timeToStart_ -= frame_.time;
+    if(timeToStart_ > 0.f)
+        return;
 
-    int numLosers = 0;
+    Player* pptr = nullptr;
 
-    for(const Player& player: players_)
-        numLosers += (player.hp == 0);
-
-    if(numLosers >= getSize(players_) - 1)
+    for(Player& p: players_)
     {
-        for(Player& player: players_)
-            player.score += player.hp > 0;
-
-        timeToStart_ = 3.f;
-        setNewGame();
+        if(!strncmp(name, p.name, 20))
+                pptr = &p;
     }
 
-    const bool allowAction = timeToStart_ <= 0.f;
+    assert(pptr);
+    Player& player = *pptr;
 
-    // @TODO(matiTechno): replace with 'gaffer on games' technique
-    frame_.time = min(frame_.time, 0.033f);
+    if(player.dir)
+        player.prevDir = player.dir;
 
-    for(const WinEvent& e: events)
+    if     (action.left)  player.dir = Dir::Left;
+    else if(action.right) player.dir = Dir::Right;
+    else if(action.up)    player.dir = Dir::Up;
+    else if(action.down)  player.dir = Dir::Down;
+    else                  player.dir = Dir::Nil;
+
+    if(action.drop)
     {
-        if(e.type == WinEvent::Key && e.key.action != GLFW_REPEAT)
+        const ivec2 targetTile = getPlayerTile(player, tileSize_);
+        bool freeTile = true;
+
+        for(const Bomb& bomb: bombs_)
         {
-            const bool on = e.key.action == GLFW_PRESS;
-
-            switch(e.key.key)
+            if(bomb.tile == targetTile)
             {
-                case GLFW_KEY_W:     actions_[0].up    = on; break;
-                case GLFW_KEY_S:     actions_[0].down  = on; break;
-                case GLFW_KEY_A:     actions_[0].left  = on; break;
-                case GLFW_KEY_D:     actions_[0].right = on; break;
-                case GLFW_KEY_C:     actions_[0].drop  = on; break;
-
-                case GLFW_KEY_UP:    actions_[1].up    = on; break;
-                case GLFW_KEY_DOWN:  actions_[1].down  = on; break;
-                case GLFW_KEY_LEFT:  actions_[1].left  = on; break;
-                case GLFW_KEY_RIGHT: actions_[1].right = on; break;
-                case GLFW_KEY_SPACE: actions_[1].drop  = on; break;
-
-                case GLFW_KEY_ESCAPE:
-                    if(on && allowAction)
-                        showScore_ = !showScore_;
-                    break;
-            }
-        }
-    }
-
-    assert(getSize(players_) >= getSize(actions_));
-    for(int i = 0; i < getSize(actions_); ++i)
-    {
-        if(players_[i].dir)
-            players_[i].prevDir = players_[i].dir;
-
-        if     (actions_[i].left  && allowAction) players_[i].dir = Dir::Left;
-        else if(actions_[i].right && allowAction) players_[i].dir = Dir::Right;
-        else if(actions_[i].up    && allowAction) players_[i].dir = Dir::Up;
-        else if(actions_[i].down  && allowAction) players_[i].dir = Dir::Down;
-        else                                      players_[i].dir = Dir::Nil;
-
-        if(actions_[i].drop && allowAction)
-        {
-            const ivec2 targetTile = getPlayerTile(players_[i], tileSize_);
-            bool freeTile = true;
-
-            for(const Bomb& bomb: bombs_)
-            {
-                if(bomb.tile == targetTile)
-                {
-                    freeTile = false;
-                    break;
-                }
-            }
-
-            if(freeTile && players_[i].dropCooldown == 0.f)
-            {
-                players_[i].dropCooldown = dropCooldown_;
-                Bomb bomb;
-                bomb.tile = targetTile;
-                bomb.timer = 3.f;
-
-                for(const Player& player: players_)
-                {
-                    if(isCollision(player.pos, targetTile, tileSize_))
-                        bomb.addPlayer(player);
-                }
-
-                bombs_.pushBack(bomb);
+                freeTile = false;
+                break;
             }
         }
 
-        actions_[i].drop = false;
+        if(freeTile && player.dropCooldown == 0.f)
+        {
+            player.dropCooldown = dropCooldown_;
+            Bomb bomb;
+            bomb.tile = targetTile;
+            bomb.timer = 3.f;
+
+            for(const Player& player: players_)
+            {
+                if(isCollision(player.pos, targetTile, tileSize_))
+                    bomb.addPlayer(player);
+            }
+
+            bombs_.pushBack(bomb);
+        }
     }
 }
 
-void GameScene::update()
+void Simulation::update(float dt, FixedArray<ExploEvent, 50>& exploEvents)
 {
-    netClient_.update(frame_.time, nameBuf_);
+    timeToStart_ -= dt;
 
-    // emitter
-
-    emitter_.update(frame_.time);
-
-    // explosions
-
-    for(int i = 0; i < explosions_.size(); ++i)
-    {
-        Explosion& explo = explosions_[i];
-        explo.anim.update(frame_.time);
-
-        if(explo.anim.ended)
-        {
-            explo = explosions_.back();
-            explosions_.popBack();
-            --i;
-        }
-    }
+    // @TODO(matiTechno): replace with 'gaffer on games' technique
+    dt = min(dt, 0.033f);
 
     // bombs
 
     for(int bombIdx = 0; bombIdx < bombs_.size(); ++bombIdx)
     {
         Bomb& bomb = bombs_[bombIdx];
-        bomb.timer -= frame_.time;
+        bomb.timer -= dt;
 
         if(bomb.timer > 0.f)
             continue;
@@ -865,19 +724,15 @@ void GameScene::update()
                 int& tileValue = tiles_[tile.y][tile.x];
 
                 if(tileValue == 2)
+                {
+                    exploEvents.pushBack({tile, ExploEvent::Wall});
                     break;
+                }
 
                 else if(tileValue == 1)
                 {
                     tileValue = 0;
-
-                    Explosion e;
-                    e.anim = createExplosionAnim();
-                    e.tile = tile;
-                    e.size = tileSize_ * 2.f;
-                    explosions_.pushBack(e);
-
-                    playSound(sounds_.crateExplosion, 0.2f);
+                    exploEvents.pushBack({tile, ExploEvent::Crate});
                     break;
                 }
                 else
@@ -905,43 +760,33 @@ void GameScene::update()
                         }
                     }
 
-                    Explosion e;
-                    e.anim = createExplosionAnim();
-                    e.tile = tile;
-                    e.size = tileSize_ * 2.f;
+                    ExploEvent ee;
+                    ee.tile = tile;
 
                     if(hitPlayer)
-                        e.color = {1.f, 0.5f, 0.5f, 0.6f};
-
+                        ee.type = ExploEvent::Player;
                     else if(hitBomb)
-                        e.color = {0.1f, 0.1f, 0.1f, 0.8f};
-
+                        ee.type = ExploEvent::OtherBomb;
                     else
-                    {
-                        e.size = tileSize_ * 4.f;
-                        e.anim.frameDt *= 1.5f;
-                        e.color = {0.1f, 0.1f, 0.1f, 0.2f};
-                    }
+                        ee.type = ExploEvent::EmptyTile;
 
-                    explosions_.pushBack(e);
+                    exploEvents.pushBack(ee);
                 }
             }
         }
         bomb = bombs_.back();
         bombs_.popBack();
         --bombIdx;
-        playSound(sounds_.bomb, 0.2f);
     }
 
     // players
 
     for(Player& player: players_)
     {
-        player.pos += player.vel * frame_.time * dirVecs_[player.dir];
-        player.anims[player.dir].update(frame_.time);
-        player.dropCooldown -= frame_.time;
+        player.pos += player.vel * dt * dirVecs_[player.dir];
+        player.dropCooldown -= dt;
         player.dropCooldown = max(0.f, player.dropCooldown);
-        player.dmgTimer -= frame_.time;
+        player.dmgTimer -= dt;
 
         // collisions
         // @TODO(matiTechno): unify collision code for tiles and bombs?
@@ -1019,7 +864,7 @@ end:
                 const vec2 slideVec = slideTilePos - player.pos;
                 const vec2 slideDir = normalize(slideVec);
 
-                player.pos += player.vel * frame_.time * slideDir;
+                player.pos += player.vel * dt * slideDir;
 
                 const vec2 newSlideVec = slideTilePos - player.pos;
 
@@ -1027,6 +872,219 @@ end:
                     player.pos = slideTilePos;
             }
         }
+    }
+
+    // score; game state
+
+    int numLosers = 0;
+
+    for(const Player& player: players_)
+        numLosers += (player.hp == 0);
+
+    if(numLosers >= getSize(players_) - 1)
+    {
+        for(Player& player: players_)
+            player.score += player.hp > 0;
+
+        timeToStart_ = 3.f;
+        setNewGame();
+    }
+}
+
+GameScene::GameScene()
+{
+    assert(getSize(playerViews_) == getSize(sim_.players_));
+
+    {
+        FILE* file;
+        file = fopen(".name", "r");
+
+        if(file)
+        {
+            fgets(nameBuf_, sizeof(nameBuf_), file);
+            assert(!fclose(file));
+        }
+    }
+
+    glBuffers_ = createGLBuffers();
+
+    font_ = createFontFromFile("res/Exo2-Black.otf", 38, 512);
+
+    textures_.tile = createTextureFromFile("res/tiles.png");
+    textures_.player1 = createTextureFromFile("res/player1.png");
+    textures_.player2 = createTextureFromFile("res/player2.png");
+    textures_.bomb = createTextureFromFile("res/bomb000.png");
+    textures_.explosion = createTextureFromFile("res/Explosion.png");
+
+    FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_various6.wav",
+                                    FMOD_CREATESAMPLE, nullptr, &sounds_.bomb) );
+
+    FCHECK( FMOD_System_CreateSound(fmodSystem, "res/sfx_exp_short_hard15.wav",
+                                    FMOD_CREATESAMPLE, nullptr, &sounds_.crateExplosion) );
+
+    emitter_.spawn.size = vec2(5.f);
+    emitter_.spawn.pos = vec2(210.f);
+    assert(emitter_.spawn.pos.x <= (Simulation::MapSize - 1) * sim_.tileSize_);
+    emitter_.spawn.hz = 100.f;
+    emitter_.particleRanges.life = {3.f, 6.f};
+    emitter_.particleRanges.size = {0.25f, 2.f};
+    emitter_.particleRanges.vel = {{-3.5f, -30.f}, {3.5f, -2.f}};
+    emitter_.particleRanges.color = {{0.1f, 0.f, 0.f, 0.f}, {0.5f, 0.25f, 0.f, 0.f}};
+    emitter_.reserve();
+
+
+    // specific configuration for each player view
+    assert(getSize(playerViews_) == 2);
+
+    playerViews_[0].texture = &textures_.player1;
+    playerViews_[1].texture = &textures_.player2;
+
+    // tightly coupled to the texture assets
+    for(int i = Dir::Up; i < Dir::Count; ++i)
+    {
+        Anim anim;
+        anim.frameDt = 0.06f;
+        anim.numFrames = 4;
+        const float frameSize = 48.f;
+
+        int x;
+        switch(i)
+        {
+            case Dir::Up:    x = 2; break;
+            case Dir::Down:  x = 0; break;
+            case Dir::Left:  x = 1; break;
+            case Dir::Right: x = 3; break;
+        }
+
+        for(int i = 0; i < anim.numFrames; ++i)
+        {
+            anim.frames[i] = {frameSize * x, frameSize * i, frameSize, frameSize};
+        }
+
+        for(int j = 0; j < 2; ++j)
+        {
+            playerViews_[j].anims[i] = anim;
+        }
+    }
+}
+
+GameScene::~GameScene()
+{
+    deleteGLBuffers(glBuffers_);
+    deleteFont(font_);
+    deleteTexture(textures_.tile);
+    deleteTexture(textures_.player1);
+    deleteTexture(textures_.player2);
+    deleteTexture(textures_.bomb);
+    deleteTexture(textures_.explosion);
+    FCHECK( FMOD_Sound_Release(sounds_.bomb) );
+    FCHECK( FMOD_Sound_Release(sounds_.crateExplosion) );
+}
+
+void GameScene::processInput(const Array<WinEvent>& events)
+{
+    const bool gameStarted = sim_.timeToStart_ <= 0.f;
+
+    if(!gameStarted)
+        showScore_ = false;
+
+    for(const WinEvent& e: events)
+    {
+        if(e.type == WinEvent::Key && e.key.action != GLFW_REPEAT)
+        {
+            const bool on = e.key.action == GLFW_PRESS;
+
+            switch(e.key.key)
+            {
+                case GLFW_KEY_W:     actions_[0].up    = on; break;
+                case GLFW_KEY_S:     actions_[0].down  = on; break;
+                case GLFW_KEY_A:     actions_[0].left  = on; break;
+                case GLFW_KEY_D:     actions_[0].right = on; break;
+                case GLFW_KEY_C:     actions_[0].drop  = on; break;
+
+                case GLFW_KEY_UP:    actions_[1].up    = on; break;
+                case GLFW_KEY_DOWN:  actions_[1].down  = on; break;
+                case GLFW_KEY_LEFT:  actions_[1].left  = on; break;
+                case GLFW_KEY_RIGHT: actions_[1].right = on; break;
+                case GLFW_KEY_SPACE: actions_[1].drop  = on; break;
+
+                case GLFW_KEY_ESCAPE:
+                {
+                    if(on && gameStarted)
+                        showScore_ = !showScore_;
+
+                    break;
+                }
+            }
+        }
+    }
+
+    assert(getSize(sim_.players_) >= getSize(actions_));
+
+    for(int i = 0; i < getSize(actions_); ++i)
+    {
+        Action& action = actions_[i];
+        sim_.processPlayerInput(action, sim_.players_[i].name);
+        action.drop = false;
+    }
+}
+
+void GameScene::update()
+{
+    netClient_.update(frame_.time, nameBuf_);
+
+    exploEvents_.clear();
+    sim_.update(frame_.time, exploEvents_);
+
+    emitter_.update(frame_.time);
+
+    for(int i = 0; i < getSize(sim_.players_); ++i)
+    {
+        playerViews_[i].anims[sim_.players_[i].dir].update(frame_.time);
+    }
+
+    for(int i = 0; i < explosions_.size(); ++i)
+    {
+        Explosion& explo = explosions_[i];
+        explo.anim.update(frame_.time);
+
+        if(explo.anim.ended)
+        {
+            explo = explosions_.back();
+            explosions_.popBack();
+            --i;
+        }
+    }
+
+    for(ExploEvent& event: exploEvents_)
+    {
+        playSound(sounds_.bomb, 0.2f);
+
+        if(event.type == ExploEvent::Wall)
+            continue;
+
+        Explosion e;
+        e.anim = createExplosionAnim();
+        e.tile = event.tile;
+        e.size = sim_.tileSize_ * 2.f;
+
+        if(event.type == ExploEvent::Crate)
+            playSound(sounds_.crateExplosion, 0.2f);
+
+        else if(event.type == ExploEvent::Player)
+            e.color = {1.f, 0.5f, 0.5f, 0.6f};
+
+        else if(event.type == ExploEvent::OtherBomb)
+            e.color = {0.1f, 0.1f, 0.1f, 0.8f};
+
+        else
+        {
+            e.size = sim_.tileSize_ * 4.f;
+            e.anim.frameDt *= 1.5f;
+            e.color = {0.1f, 0.1f, 0.1f, 0.2f};
+        }
+        
+        explosions_.pushBack(e);
     }
 }
 
@@ -1036,25 +1094,25 @@ void GameScene::render(const GLuint program)
 
     Camera camera;
     camera.pos = vec2(0.f);
-    camera.size = vec2(MapSize * tileSize_);
+    camera.size = vec2(Simulation::MapSize * sim_.tileSize_);
     camera = expandToMatchAspectRatio(camera, frame_.fbSize);
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);
 
     // tilemap
 
-    assert(MapSize * MapSize <= getSize(rects_));
+    assert(Simulation::MapSize * Simulation::MapSize <= getSize(rects_));
 
-    for (int j = 0; j < MapSize; ++j)
+    for (int j = 0; j < Simulation::MapSize; ++j)
     {
-        for (int i = 0; i < MapSize; ++i)
+        for (int i = 0; i < Simulation::MapSize; ++i)
         {
-            Rect& rect = rects_[j * MapSize + i];
-            rect.pos = vec2(i, j) * tileSize_;
-            rect.size = vec2(tileSize_);
+            Rect& rect = rects_[j * Simulation::MapSize + i];
+            rect.pos = vec2(i, j) * sim_.tileSize_;
+            rect.size = vec2(sim_.tileSize_);
             rect.color = {1.f, 1.f, 1.f, 1.f};
 
-            switch (tiles_[j][i])
+            switch (sim_.tiles_[j][i])
             {
                 case 0: rect.texRect = {0.f, 0.f, 64.f, 64.f};   break;
                 case 1: rect.texRect = {64.f, 0.f, 64.f, 64.f};  break;
@@ -1076,16 +1134,17 @@ void GameScene::render(const GLuint program)
 
     // bombs
 
-    assert(bombs_.size() <= getSize(rects_));
+    assert(sim_.bombs_.size() <= getSize(rects_));
 
-    for(int i = 0; i < bombs_.size(); ++i)
+    for(int i = 0; i < sim_.bombs_.size(); ++i)
     {
         // @ somewhat specific to the bomb texture asset
-        const float coeff = fabs(sinf(bombs_[i].timer * 2.f)) * 0.4f;
+        const float coeff = fabs(sinf(sim_.bombs_[i].timer * 2.f)) * 0.4f;
 
         Rect& rect = rects_[i];
-        rect.size = vec2(tileSize_ + coeff * tileSize_);
-        rect.pos = vec2(bombs_[i].tile) * tileSize_ + (vec2(tileSize_) - rect.size) / 2.f;
+        rect.size = vec2(sim_.tileSize_ + coeff * sim_.tileSize_);
+        rect.pos = vec2(sim_.bombs_[i].tile) * sim_.tileSize_ + (vec2(sim_.tileSize_)
+                - rect.size) / 2.f;
 
         // default values might be overwritten
         rect.color = {1.f, 1.f, 1.f, 1.f};
@@ -1094,15 +1153,18 @@ void GameScene::render(const GLuint program)
 
     uniform1i(program, "mode", FragmentMode::Texture);
     bindTexture(textures_.bomb);
-    updateGLBuffers(glBuffers_, rects_, bombs_.size());
-    renderGLBuffers(glBuffers_, bombs_.size());
+    updateGLBuffers(glBuffers_, rects_, sim_.bombs_.size());
+    renderGLBuffers(glBuffers_, sim_.bombs_.size());
 
     // players
 
-    for(Player& player: players_)
+    for(int i = 0; i < getSize(sim_.players_); ++i)
     {
+        Player& player = sim_.players_[i];
+        PlayerView& playerView = playerViews_[i];
+
         Rect rect;
-        rect.size = vec2(tileSize_);
+        rect.size = vec2(sim_.tileSize_);
         rect.pos = player.pos;
 
         if(player.dmgTimer > 0.f)
@@ -1116,16 +1178,16 @@ void GameScene::render(const GLuint program)
 
         rect.color = {1.f, 1.f, 1.f, 1.f};
 
-        rect.texRect = player.dir ? player.anims[player.dir].getCurrentFrame() :
-                                    player.anims[player.prevDir].frames[0];
+        rect.texRect = player.dir ? playerView.anims[player.dir].getCurrentFrame() :
+                                    playerView.anims[player.prevDir].frames[0];
 
-        rect.texRect.x /= player.texture->size.x;
-        rect.texRect.y /= player.texture->size.y;
-        rect.texRect.z /= player.texture->size.x;
-        rect.texRect.w /= player.texture->size.y;
+        rect.texRect.x /= playerView.texture->size.x;
+        rect.texRect.y /= playerView.texture->size.y;
+        rect.texRect.z /= playerView.texture->size.x;
+        rect.texRect.w /= playerView.texture->size.y;
 
         uniform1i(program, "mode", FragmentMode::Texture);
-        bindTexture(*player.texture);
+        bindTexture(*playerView.texture);
         updateGLBuffers(glBuffers_, &rect, 1);
         renderGLBuffers(glBuffers_, 1);
     }
@@ -1138,8 +1200,8 @@ void GameScene::render(const GLuint program)
     {
         rects_[i].size = vec2(explosions_[i].size);
 
-        rects_[i].pos = vec2(explosions_[i].tile) * tileSize_
-                        + ( vec2(tileSize_) - rects_[i].size ) / 2.f;
+        rects_[i].pos = vec2(explosions_[i].tile) * sim_.tileSize_
+                        + ( vec2(sim_.tileSize_) - rects_[i].size ) / 2.f;
 
         rects_[i].color = explosions_[i].color;
         rects_[i].texRect = explosions_[i].anim.getCurrentFrame();
@@ -1167,25 +1229,25 @@ void GameScene::render(const GLuint program)
     {
         Rect* rect = &rects_[0];
         const float h = 2.f;
-        for(const Player& player: players_)
+        for(const Player& player: sim_.players_)
         {
             // * hp
             rect[0].pos = player.pos;
-            rect[0].size = {float(player.hp) / HP * tileSize_, h};
+            rect[0].size = {float(player.hp) /Simulation::HP * sim_.tileSize_, h};
             rect[0].color = {1.f, 0.15f, 0.15f, 0.7f};
 
             // * drop cooldown
             rect[1].pos = rect[0].pos;
             rect[1].pos.y += h;
-            rect[1].size = {player.dropCooldown / dropCooldown_ * tileSize_, h};
+            rect[1].size = {player.dropCooldown / sim_.dropCooldown_ * sim_.tileSize_, h};
             rect[1].color = {1.f, 1.f, 0.f, 0.6f};
 
             rect += 2;
         }
 
         uniform1i(program, "mode", FragmentMode::Color);
-        updateGLBuffers(glBuffers_, rects_, getSize(players_) * 2.f);
-        renderGLBuffers(glBuffers_, getSize(players_) * 2.f);
+        updateGLBuffers(glBuffers_, rects_, getSize(sim_.players_) * 2.f);
+        renderGLBuffers(glBuffers_, getSize(sim_.players_) * 2.f);
     }
 
     // @ the quality of this texts depends on map size...
@@ -1200,7 +1262,7 @@ void GameScene::render(const GLuint program)
         text.color = {0.1f, 1.f, 0.1f, 0.85f};
         text.scale = 0.15f;
 
-        for(Player& player: players_)
+        for(Player& player: sim_.players_)
         {
             text.str = player.name;
             text.pos = player.pos;
@@ -1216,15 +1278,16 @@ void GameScene::render(const GLuint program)
 
     // new round timer
 
-    if(timeToStart_ > 0.f)
+    if(sim_.timeToStart_ > 0.f)
     {
         char buffer[20];
         Text text;
         text.str = buffer;
-        snprintf(buffer, getSize(buffer), "%.3f", timeToStart_);
+        snprintf(buffer, getSize(buffer), "%.3f", sim_.timeToStart_);
         text.color = {1.f, 0.5f, 1.f, 0.8f};
         text.scale = 2.f;
-        text.pos = {(MapSize * tileSize_ - getTextSize(text, font_).x) / 2.f, 5.f};
+        text.pos = {(Simulation::MapSize * sim_.tileSize_ - getTextSize(text, font_).x)
+                    / 2.f, 5.f};
 
         const int count = writeTextToBuffer(text, font_, rects_, getSize(rects_));
 
@@ -1236,7 +1299,7 @@ void GameScene::render(const GLuint program)
 
     // score
 
-    if(timeToStart_ > 0.f || showScore_)
+    if(sim_.timeToStart_ > 0.f || showScore_)
     {
         char buffer[256];
         Text text;
@@ -1248,14 +1311,14 @@ void GameScene::render(const GLuint program)
         bufOffset += snprintf(buffer + bufOffset, max(0, getSize(buffer) - bufOffset),
                               "score:");
 
-        for(const Player& player: players_)
+        for(const Player& player: sim_.players_)
         {
             bufOffset += snprintf(buffer + bufOffset, max(0, getSize(buffer) - bufOffset),
                                   "\n%d", player.score);
         }
 
         const vec2 textSize = getTextSize(text, font_);
-        text.pos = ( vec2(MapSize) * tileSize_ - textSize ) / 2.f;
+        text.pos = ( vec2(Simulation::MapSize) * sim_.tileSize_ - textSize ) / 2.f;
 
         // * background
         {
@@ -1287,18 +1350,20 @@ void GameScene::render(const GLuint program)
         rect.size = vec2(20.f);
         rect.pos = {text.pos.x + textSize.x - rect.size.x, text.pos.y};
 
-        for(const Player& player: players_)
+        for(int i = 0; i < getSize(sim_.players_); ++i)
         {
+            const Player& player = sim_.players_[i];
+            const PlayerView& playerView = playerViews_[i];
             rect.pos.y += lineSpace;
-            rect.texRect = player.dir ? player.anims[player.dir].getCurrentFrame() :
-                                        player.anims[player.prevDir].frames[0];
+            rect.texRect = player.dir ? playerView.anims[player.dir].getCurrentFrame() :
+                                        playerView.anims[player.prevDir].frames[0];
 
-            rect.texRect.x /= player.texture->size.x;
-            rect.texRect.y /= player.texture->size.y;
-            rect.texRect.z /= player.texture->size.x;
-            rect.texRect.w /= player.texture->size.y;
+            rect.texRect.x /= playerView.texture->size.x;
+            rect.texRect.y /= playerView.texture->size.y;
+            rect.texRect.z /= playerView.texture->size.x;
+            rect.texRect.w /= playerView.texture->size.y;
 
-            bindTexture(*player.texture);
+            bindTexture(*playerView.texture);
             updateGLBuffers(glBuffers_, &rect, 1);
             renderGLBuffers(glBuffers_, 1);
         }

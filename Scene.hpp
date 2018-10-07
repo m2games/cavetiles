@@ -375,16 +375,20 @@ struct Player
     vec2 pos;
     float vel;
     int dir = Dir::Nil;
-    Texture* texture;
-    Anim anims[Dir::Count];
     float dropCooldown;
     int hp;
     int score = 0;
     char name[20] = {};
 
-    // for animation only
+    // only for the visuals; kept in simulation for convenience
     float dmgTimer = 0.f;
     int prevDir;
+};
+
+struct PlayerView
+{
+    Texture* texture;
+    Anim anims[Dir::Count];
 };
 
 struct Bomb
@@ -400,6 +404,49 @@ struct Bomb
     const Player* players[2] = {}; // initialized to 0
 };
 
+struct ExploEvent
+{
+    enum Type
+    {
+        Crate,
+        OtherBomb,
+        EmptyTile,
+        Player,
+        Wall
+    };
+
+    ivec2 tile;
+    int type;
+};
+
+struct Action // @TODO: rename to PlayerAction?
+{
+    bool up = false;
+    bool down = false;
+    bool left = false;
+    bool right = false;
+    bool drop = false;
+};
+
+struct Simulation
+{
+    Simulation();
+
+    void setNewGame();
+    void processPlayerInput(const Action& action, const char* name);
+    void update(float dt, FixedArray<ExploEvent, 50>& exploEvents); // in seconds
+
+    enum {MapSize = 13, HP = 3};
+    const float dropCooldown_ = 1.f;
+    const float tileSize_ = 20.f;
+
+    int tiles_[MapSize][MapSize] = {}; // initialized to 0
+    vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
+    Player players_[2];
+    FixedArray<Bomb, 50> bombs_;
+    float timeToStart_ = 0.f;
+};
+
 class GameScene: public Scene
 {
 public:
@@ -410,21 +457,10 @@ public:
     void render(GLuint program) override;
 
 private:
-    void setNewGame();
-
-    enum {MapSize = 13, HP = 3};
-    const float tileSize_ = 20.f;
-    const float dropCooldown_ = 1.f;
-
     GLBuffers glBuffers_;
-    Rect rects_[MapSize * MapSize];
-    int tiles_[MapSize][MapSize] = {}; // initialized to 0
-    Player players_[2];
-    FixedArray<Bomb, 50> bombs_;
+    Rect rects_[Simulation::MapSize * Simulation::MapSize];
     FixedArray<Explosion, 50> explosions_;
-    vec2 dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, {-1.f, 0.f}, {1.f, 0.f}};
     Emitter emitter_;
-    float timeToStart_ = 0.f;
     Font font_;
     bool showScore_;
 
@@ -443,15 +479,10 @@ private:
         FMOD_SOUND* crateExplosion;
     } sounds_;
 
-    struct Action
-    {
-        bool up = false;
-        bool down = false;
-        bool left = false;
-        bool right = false;
-        bool drop = false;
-    } actions_[2];
-
     netcode::Client netClient_;
     char nameBuf_[20]; // @TODO: will be incorrect if server won't accept it
+    Simulation sim_;
+    PlayerView playerViews_[2];
+    Action actions_[2];
+    FixedArray<ExploEvent, 50> exploEvents_;
 };
