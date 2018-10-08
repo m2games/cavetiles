@@ -1,7 +1,7 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -12,81 +12,23 @@
 #include <time.h>
 #include <netinet/tcp.h>
 #include "Array.hpp"
+#include "Scene.hpp"
+#include "Simulation.cpp"
 
-// @TODO: remove code duplication with client
+using namespace netcode;
 
-template<typename T>
-T min(T l, T r) {return l > r ? r : l;}
+// code duplication with main.cpp
+int getRandomInt(const int min, const int max)
+{
+    assert(min <= max);
+    return min + rand() / (RAND_MAX / (max - min + 1) + 1);
+}
 
 double getTimeSec()
 {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + ts.tv_nsec / 1000000000.0;
-}
-
-const void* get_in_addr(const sockaddr* const sa)
-{
-    if(sa->sa_family == AF_INET)
-        return &( ( (sockaddr_in*)sa )->sin_addr );
-
-    return &( ( (sockaddr_in6*)sa )->sin6_addr );
-}
-
-struct Cmd
-{
-    enum
-    {
-        _nil,
-
-        Ping,
-        Pong,
-        Chat,
-        GameFull,
-
-        // name cmds have the name as the payload
-        SetName,
-        NameOk,
-        MustRename,
-
-        _count
-    };
-};
-
-const char* getCmdStr(int cmd)
-{
-    switch(cmd)
-    {
-        case Cmd::Ping:       return "PING";
-        case Cmd::Pong:       return "PONG";
-        case Cmd::Chat:       return "CHAT";
-        case Cmd::GameFull:   return "GAME_FULL";
-        case Cmd::SetName:    return "SET_NAME";
-        case Cmd::NameOk:     return "NAME_OK";
-        case Cmd::MustRename: return "MUST_RENAME";
-
-    }
-    assert(false);
-}
-
-void addMsg(Array<char>& buffer, int cmd, const char* payload = "")
-{
-    if(cmd)
-    {
-        const char* cmdStr = getCmdStr(cmd);
-        int len = strlen(cmdStr) + strlen(payload) + 2; // ' ' + '\0'
-        int prevSize = buffer.size();
-        buffer.resize(prevSize + len);
-        assert(snprintf(buffer.data() + prevSize, len, "%s %s", cmdStr, payload) == len - 1);
-    }
-    // special case for http response
-    else
-    {
-        int len = strlen(payload) + 1;
-        int prevSize = buffer.size();
-        buffer.resize(prevSize + len);
-        memcpy(buffer.data() + prevSize, payload, len);
-    }
 }
 
 enum class ClientStatus
@@ -123,6 +65,8 @@ void sigHandler(int) {gExitLoop = true;}
 
 int main()
 {
+    srand(time(nullptr));
+
     signal(SIGINT, sigHandler);
     signal(SIGTERM, sigHandler);
 
@@ -208,17 +152,21 @@ int main()
     double currentTime = getTimeSec();
     float timer = 0.f;
 
+    Simulation sim;
+    FixedArray<ExploEvent, 50> exploEvents;
+
     // server loop
     // note: don't change the order of operations
     // (some logic is based on this)
     while(gExitLoop == false)
     {
+        const double newTime = getTimeSec();
+        const double dt = newTime - currentTime;
+        timer += dt;
+        currentTime = newTime;
+
         // update clients
         {
-            const double newTime = getTimeSec();
-            timer += newTime - currentTime;
-            currentTime = newTime;
-
             if(timer > 5.f)
             {
                 timer = 0.f;
@@ -341,7 +289,7 @@ int main()
             Array<char>& sendBuf = sendBufs[i];
             Array<char>& recvBuf = recvBufs[i];
             int& recvBufNumUsed = recvBufsNumUsed[i];
-            Client& client = clients[i];
+            Client& thisClient = clients[i];
 
             const char* end = recvBuf.data();
             const char* begin;
@@ -352,7 +300,7 @@ int main()
                 const char* const cmd = "GET";
                 if(strncmp(cmd, recvBuf.data(), strlen(cmd)) == 0)
                 {
-                    client.status = ClientStatus::Browser;
+                    thisClient.status = ClientStatus::Browser;
                     addMsg(sendBuf, Cmd::_nil,
                             "HTTP/1.1 200 OK\r\n"
                             "Content-Type: text/html\r\n\r\n"
@@ -380,8 +328,8 @@ int main()
 
                 ++end;
 
-                printf("'%s' (%s) received msg: '%s'\n", client.name,
-                                                         getStatusStr(client.status), begin);
+                printf("'%s' (%s) received msg: '%s'\n", thisClient.name,
+                                                         getStatusStr(thisClient.status), begin);
 
                 int cmd = 0;
                 for(int i = 1; i < Cmd::_count; ++i)
@@ -411,31 +359,31 @@ int main()
                         break;
 
                     case Cmd::Pong:
-                        client.alive = true;
+                        thisClient.alive = true;
                         break;
 
                     case Cmd::SetName:
                     {
-                        const bool isInGame = client.status == ClientStatus::InGame;
+                        const bool isInGame = thisClient.status == ClientStatus::InGame;
 
                         // ...
                         // case when in-game client sets the same name once again
                         if(isInGame)
                         {
-                            if(strcmp(client.name, begin) == 0)
+                            if(strcmp(thisClient.name, begin) == 0)
                                 break;
                         }
 
                         if(!isInGame)
-                            client.status = ClientStatus::Lobby;
+                            thisClient.status = ClientStatus::Lobby;
 
                         // check if the game is not full
                         if(!isInGame)
                         {
                             int numPlayers = 0;
-                            for(const Client& other: clients)
+                            for(const Client& client: clients)
                             {
-                                if(other.status == ClientStatus::InGame)
+                                if(client.status == ClientStatus::InGame)
                                     ++numPlayers;
                             }
 
@@ -450,10 +398,10 @@ int main()
 
                         bool ok = true;
 
-                        for(const Client& other: clients)
+                        for(const Client& client: clients)
                         { 
-                            if(other.status == ClientStatus::InGame &&
-                               strcmp(other.name, begin) == 0)
+                            if(client.status == ClientStatus::InGame &&
+                               strcmp(client.name, begin) == 0)
                             {
                                 ok = false;
                                 break;
@@ -468,18 +416,41 @@ int main()
                             if(isInGame)
                             {
                                 rename = true;
-                                memcpy(oldName, client.name, 20);
+                                memcpy(oldName, thisClient.name, 20);
                             }
                             else
-                                client.status = ClientStatus::InGame;
+                            {
+                                thisClient.status = ClientStatus::InGame;
+                                sim.setNewGame();
+                            }
 
-                            const int maxSize = sizeof(client.name);
+                            const int maxSize = sizeof(thisClient.name);
 
                             // + 1 so the null char will be included
-                            memcpy(client.name, begin, min(maxSize, int(strlen(begin)) + 1));
-                            client.name[maxSize - 1] = '\0';
+                            memcpy(thisClient.name, begin, min(maxSize, int(strlen(begin)) + 1));
+                            thisClient.name[maxSize - 1] = '\0';
+                            addMsg(sendBuf, Cmd::NameOk, thisClient.name);
 
-                            addMsg(sendBuf, Cmd::NameOk, client.name);
+                            // update the player name in the simulation
+                            for(Player& player: sim.players_)
+                            {
+                                bool update = true;
+
+                                for(const Client& client: clients)
+                                {
+                                    if(strcmp(client.name, player.name) == 0)
+                                    {
+                                        update = false;
+                                        break;
+                                    }
+                                }
+
+                                if(update)
+                                {
+                                    memcpy(player.name, thisClient.name, sizeof(thisClient.name));
+                                    break;
+                                }
+                            }
 
                             for(int i = 0; i < clients.size(); ++i)
                             {
@@ -489,10 +460,10 @@ int main()
 
                                     if(!rename)
                                         snprintf(msg, sizeof(msg), "'%s' has joined the game!",
-                                                 client.name);
+                                                 thisClient.name);
                                     else
                                         snprintf(msg, sizeof(msg), "'%s' changed name to '%s'!",
-                                                 oldName, client.name);
+                                                 oldName, thisClient.name);
 
                                     addMsg(sendBufs[i], Cmd::Chat, msg);
                                 }
@@ -506,7 +477,7 @@ int main()
 
                     case Cmd::Chat:
                     {
-                        if(client.status != ClientStatus::InGame)
+                        if(thisClient.status != ClientStatus::InGame)
                         {
                             printf("only InGame clients can send chat messages\n");
                             break;
@@ -517,12 +488,17 @@ int main()
                             if(clients[i].status == ClientStatus::InGame)
                             {
                                 char msg[512];
-                                snprintf(msg, sizeof(msg), "%s: %s", client.name, begin);
+                                snprintf(msg, sizeof(msg), "%s: %s", thisClient.name, begin);
                                 addMsg(sendBufs[i], Cmd::Chat, msg);
                             }
                         }
                         break;
                     }
+                    case Cmd::PlayerInput:
+
+                        // @TODO:
+                        // sim.processPlayerInput(todo, thisClient.name);
+                        break;
                 }
             }
 
@@ -546,6 +522,25 @@ int main()
                         addMsg(sendBufs[i], Cmd::Chat, buf);
                     }
                 }
+            }
+        }
+
+        // run the simulation
+        {
+            bool doSim = false;
+            for(const Client& client: clients)
+            {
+                if(client.status == ClientStatus::InGame)
+                {
+                    doSim = true;
+                    break;
+                }
+            }
+
+            if(doSim)
+            {
+                sim.update(dt, exploEvents);
+                // now send the simulation and exploEvents
             }
         }
 
@@ -593,8 +588,9 @@ int main()
             }
         }
 
-        // sleep for 10 ms
-        usleep(10000);
+        // @TODO:
+        // sleep for 4 ms
+        usleep(4000);
     }
     
     for(Client& client: clients)

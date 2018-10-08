@@ -2,7 +2,9 @@
 
 #include "Array.hpp"
 #include "fmod/fmod.h"
-#include "float.h"
+#include <float.h>
+#include <math.h>
+#include <sys/socket.h>
 
 template<typename T>
 inline T max(T a, T b) {return a > b ? a : b;}
@@ -68,6 +70,12 @@ struct vec4
     float z;
     float w;
 };
+
+inline float length(const vec2 v) {return sqrt(v.x * v.x + v.y * v.y);}
+
+inline vec2 normalize(const vec2 v) {return v / length(v);}
+
+inline float dot(const vec2 v1, const vec2 v2) {return v1.x * v2.x + v1.y * v2.y;}
 
 struct FragmentMode
 {
@@ -405,11 +413,6 @@ struct Simulation
     float timeToStart_ = 0.f;
 };
 
-#define SIM_STATIC_DEF \
-    const float Simulation::dropCooldown_ = 1.f; \
-    const float Simulation::tileSize_ = 20.f; \
-    const vec2  Simulation::dirVecs_[Dir::Count] = {{0.f, 0.f}, {0.f, -1.f}, {0.f, 1.f}, \
-        {-1.f, 0.f}, {1.f, 0.f}};
 
 namespace netcode
 {
@@ -424,24 +427,28 @@ struct Cmd
         Pong,
         Chat,
         GameFull,
-
         // name cmds have the name as the payload
         SetName,
         NameOk,
         MustRename,
+        PlayerInput,
+        Simulation,
 
         _count
     };
 };
 
-struct Client
+// why Net and not just Client? to avoid name collision in server.cpp if we use
+// 'using namespace netcode;'; yes I know...
+
+struct NetClient
 {
-    Client();
-    ~Client();
-    Client(const Client&) = delete;
-    Client(Client&&) = delete;
-    Client& operator=(const Client&) = delete;
-    Client& operator=(Client&&) = delete;
+    NetClient();
+    ~NetClient();
+    NetClient(const NetClient&) = delete;
+    NetClient(NetClient&&) = delete;
+    NetClient& operator=(const NetClient&) = delete;
+    NetClient& operator=(NetClient&&) = delete;
 
     // dt is seconds
     void update(float dt, const char* name,
@@ -471,8 +478,10 @@ struct Client
 // use this to e.g. send a chat message
 void addMsg(Array<char>& sendBuf, int cmd, const char* payload = "");
 
-} // netcode
+const char* getCmdStr(int cmd);
+const void* get_in_addr(const sockaddr* const sa);
 
+} // netcode
 
 class GameScene: public Scene
 {
@@ -489,7 +498,7 @@ private:
     FixedArray<Explosion, 50> explosions_;
     Emitter emitter_;
     Font font_;
-    bool showScore_ = true;
+    bool showScore_ = false;
 
     struct
     {
@@ -506,7 +515,7 @@ private:
         FMOD_SOUND* crateExplosion;
     } sounds_;
 
-    netcode::Client netClient_;
+    netcode::NetClient netClient_;
     char nameToSetBuf_[20] = "player1";
     char inputNameBuf_[20] = {}; // flush to nameToSetBuf_ on ENTER
     char chatBuf_[128] = {};

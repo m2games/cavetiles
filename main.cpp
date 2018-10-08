@@ -14,6 +14,7 @@
 
 // unity build
 #include "GameScene.cpp"
+#include "Simulation.cpp"
 #include "glad.c"
 #include "imgui/imgui.cpp"
 #include "imgui/imgui_demo.cpp"
