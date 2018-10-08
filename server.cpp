@@ -495,10 +495,15 @@ int main()
                         break;
                     }
                     case Cmd::PlayerInput:
+                    {
+                        Action action;
 
-                        // @TODO:
-                        // sim.processPlayerInput(todo, thisClient.name);
+                        assert(sscanf(begin, "%d %d %d %d %d", &action.up, &action.down,
+                                    &action.left, &action.right, &action.drop) == 5);
+
+                        sim.processPlayerInput(action, thisClient.name);
                         break;
+                    }
                 }
             }
 
@@ -539,6 +544,7 @@ int main()
 
             if(doSim)
             {
+                exploEvents.clear();
                 sim.update(dt, exploEvents);
                 // now send the simulation and exploEvents
             }

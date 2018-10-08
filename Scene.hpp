@@ -385,11 +385,11 @@ struct ExploEvent
 
 struct Action // @TODO: rename to PlayerAction?
 {
-    bool up = false;
-    bool down = false;
-    bool left = false;
-    bool right = false;
-    bool drop = false;
+    int up = false;
+    int down = false;
+    int left = false;
+    int right = false;
+    int drop = false;
 };
 
 struct Simulation

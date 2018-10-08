@@ -147,7 +147,15 @@ NetClient::~NetClient()
 void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 50>& eevents,
                     Action& playerAction)
 {
-    // @TODO: send playerAction to server
+    if(inGame)
+    {
+        char buf[10] = {};
+
+        sprintf(buf, "%d %d %d %d %d", playerAction.up, playerAction.down, playerAction.left,
+                playerAction.right, playerAction.drop);
+
+        addMsg(sendBuf, Cmd::PlayerInput, buf);
+    }
 
     // time managment
     timerAlive += dt;
