@@ -8,15 +8,16 @@ const char* getCmdStr(int cmd)
 {
     switch(cmd)
     {
-        case Cmd::Ping:        return "PING";
-        case Cmd::Pong:        return "PONG";
-        case Cmd::Chat:        return "CHAT";
-        case Cmd::GameFull:    return "GAME_FULL";
-        case Cmd::SetName:     return "SET_NAME";
-        case Cmd::NameOk:      return "NAME_OK";
-        case Cmd::MustRename:  return "MUST_RENAME";
-        case Cmd::PlayerInput: return "PLAYER_INPUT";
-        case Cmd::Simulation:  return "SIMULATION";
+        case Cmd::Ping:         return "PING";
+        case Cmd::Pong:         return "PONG";
+        case Cmd::Chat:         return "CHAT";
+        case Cmd::GameFull:     return "GAME_FULL";
+        case Cmd::SetName:      return "SET_NAME";
+        case Cmd::NameOk:       return "NAME_OK";
+        case Cmd::MustRename:   return "MUST_RENAME";
+        case Cmd::PlayerInput:  return "PLAYER_INPUT";
+        case Cmd::Simulation:   return "SIMULATION";
+        case Cmd::InitTileData: return "INIT_TILE_DATA";
     }
     assert(false);
 }
@@ -286,7 +287,7 @@ void Simulation::processPlayerInput(const Action& action, const char* name)
     }
 }
 
-void Simulation::update(float dt, FixedArray<ExploEvent, 50>& exploEvents)
+bool Simulation::update(float dt, FixedArray<ExploEvent, 50>& exploEvents)
 {
     timeToStart_ -= dt;
 
@@ -482,5 +483,8 @@ end:
 
         timeToStart_ = 3.f;
         setNewGame();
+        return true;
     }
+    else
+        return false;
 }

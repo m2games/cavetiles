@@ -50,7 +50,7 @@ void addLogMsgErno(Array<char>& buf, const char* const msg, bool gaiEc = 0)
 // returns socket descriptior, -1 if failed
 // if succeeded you have to free the socket yourself
 // @TODO: this must be non-blocking connect
-int connect(Array<char>& logBuf)
+int connect(Array<char>& logBuf, const char* host)
 {
     addrinfo hints = {};
     hints.ai_family = AF_UNSPEC;
@@ -59,7 +59,7 @@ int connect(Array<char>& logBuf)
     addrinfo* list;
     {
         // this block (domain name resolution)
-        const int ec = getaddrinfo("localhost", "3000", &hints, &list);
+        const int ec = getaddrinfo(host, "3000", &hints, &list);
         if(ec != 0)
         {
             addLogMsgErno(logBuf, "getaddrinfo() failed", ec);
@@ -144,7 +144,19 @@ NetClient::~NetClient()
         close(sockfd);
 }
 
-void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 50>& eevents,
+// count - move by this many words
+void gotoNextWord(const char** buf, int count)
+{
+    for(int i = 0; i < count; ++i)
+    {
+        while(**buf != ' ')
+            ++(*buf);
+
+        ++(*buf);
+    }
+}
+
+void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 50>& exploEvents,
                     Action& playerAction)
 {
     if(inGame)
@@ -174,7 +186,8 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
             if(sockfd != -1)
                 close(sockfd);
 
-            sockfd = connect(logBuf);
+            assert(strlen(host));
+            sockfd = connect(logBuf, host);
 
             if(sockfd != -1)
             {
@@ -354,9 +367,76 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
                 }
                 case Cmd::Simulation:
                 {
+                    // @ !!! we are not validating the data
+
+                    const char* buf = begin;
+
+                    sscanf(buf, "%f", &sim.timeToStart_);
+                    gotoNextWord(&buf, 1);
+
+                    int numPlayers;
+                    sscanf(buf, "%d", &numPlayers);
+                    gotoNextWord(&buf, 1);
+
+                    // @TODO:
+                    assert(numPlayers == getSize(sim.players_));
+
+                    for(int i = 0; i < numPlayers; ++i)
+                    {
+                        Player& p = sim.players_[i];
+
+                        sscanf(buf, "%f %f %f %d %f %d %d %s %f %d",
+                            &p.pos.x, &p.pos.y, &p.vel, &p.dir, &p.dropCooldown, &p.hp, &p.score,
+                            p.name, &p.dmgTimer, &p.prevDir);
+
+                        gotoNextWord(&buf, 10);
+
+                    }
+
+                    sim.bombs_.clear();
+                    int numBombs;
+                    sscanf(buf, "%d", &numBombs);
+                    gotoNextWord(&buf, 1);
+
+                    for(int i = 0; i < numBombs; ++i)
+                    {
+                        Bomb b;
+
+                        sscanf(buf, "%d %d %d %f %d %d ",
+                                &b.tile.x, &b.tile.y, &b.range, &b.timer, &b.playerIdxs[0],
+                                &b.playerIdxs[1]);
+
+                        sim.bombs_.pushBack(b);
+
+                        gotoNextWord(&buf, 6);
+                    }
+
+                    int numExploEvents;
+                    sscanf(buf, "%d", &numExploEvents);
+                    gotoNextWord(&buf, 1);
+
+                    for(int i = 0; i < numExploEvents; ++i)
+                    {
+                        ExploEvent e;
+                        sscanf(buf, "%d %d %d", &e.tile.x, &e.tile.y, &e.type);
+                        exploEvents.pushBack(e);
+                        gotoNextWord(&buf, 3);
+                    }
+
                     simReadyToSync = true;
-                    // @TODO: update the simulation, push explo events
                     break;
+                }
+                case Cmd::InitTileData:
+                {
+                    // @ !!! we are not validating the data
+
+                    const char* ptr = begin;
+
+                    for(int i = 0; i < Simulation::MapSize * Simulation::MapSize; ++i)
+                    {
+                        sim.tiles_[0][i] = *ptr - 48; // converting from ascii
+                        ptr += 2;
+                    }
                 }
             }
         }
@@ -380,6 +460,15 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
         else
             sendBuf.erase(0, rc);
     }
+
+    // update the tiles based on the exploEvents
+    // not inside Cmd::Simulation: because it is inside a loop
+    // we want to iterate over all exploEvents just once
+    for(ExploEvent& e: exploEvents)
+    {
+        if(e.type == ExploEvent::Crate)
+            sim.tiles_[e.tile.y][e.tile.x] = 0;
+        }
 }
 
 } // netcode
@@ -483,6 +572,7 @@ GameScene::GameScene()
 {
     assert(getSize(playerViews_) == getSize(sim_.players_));
 
+    // @TODO: configuration file? :D
     {
         FILE* file;
         file = fopen(".name", "r");
@@ -490,6 +580,17 @@ GameScene::GameScene()
         if(file)
         {
             fgets(nameToSetBuf_, sizeof(nameToSetBuf_), file);
+            assert(!fclose(file));
+        }
+    }
+
+    {
+        FILE* file;
+        file = fopen(".host", "r");
+
+        if(file)
+        {
+            fgets(netClient_.host, sizeof(netClient_.host), file);
             assert(!fclose(file));
         }
     }
@@ -636,7 +737,7 @@ void GameScene::update()
 
     // @TODO: interpolation
     else if(netClient_.simReadyToSync)
-        memcpy(&sim_, &netClient_.sim, sizeof(Simulation));
+        sim_ = netClient_.sim;
 
     emitter_.update(frame_.time);
 
@@ -993,13 +1094,34 @@ void GameScene::render(const GLuint program)
         ImGui::TextColored(ImVec4(0.f, 1.f, 0.f, 1.f), "logged as '%s'", netClient_.inGameName);
 
     else if(!netClient_.hasToReconnect)
-        ImGui::TextColored(ImVec4(1.f, 1.f, 0.f, 1.f), "status: connected, waiting in the lobby...");
+        ImGui::TextColored(ImVec4(1.f, 1.f, 0.f, 1.f), "status: connected, waiting in the "
+                "lobby...");
 
     else
-        ImGui::TextColored(ImVec4(1.f, 0.3f, 0.f, 1.f), "status: disconnected");
+        ImGui::TextColored(ImVec4(1.f, 0.3f, 0.f, 1.f), "status: connecting to '%s'",
+                netClient_.host);
+
+    if(ImGui::InputText("host name", hostnameBuf_, sizeof(hostnameBuf_),
+                ImGuiInputTextFlags_EnterReturnsTrue))
+    {
+        assert(sizeof(hostnameBuf_) == sizeof(netClient_.host));
+
+        if(strcmp(hostnameBuf_, netClient_.host) != 0)
+        {
+            netClient_.hasToReconnect = true;
+            memcpy(netClient_.host, hostnameBuf_, sizeof(netClient_.host));
+
+            FILE* file;
+            file = fopen(".host", "w");
+            assert(file);
+            fputs(hostnameBuf_, file);
+            assert(!fclose(file));
+        }
+    }
 
     if(ImGui::InputText("login name", inputNameBuf_, sizeof(inputNameBuf_),
-                ImGuiInputTextFlags_EnterReturnsTrue))
+                ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CharsNoBlank))
+        // no blank because the serialization system on the server requires it
     {
         assert(sizeof(nameToSetBuf_) == sizeof(inputNameBuf_));
 

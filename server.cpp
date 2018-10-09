@@ -60,6 +60,32 @@ const char* getStatusStr(ClientStatus code)
     assert(false);
 }
 
+static constexpr int maxClients = 10;
+
+void sendInitTileData(FixedArray<Client, maxClients>& clients, Array<char>* sendBufs, int* tileMap)
+{
+    for(int cidx = 0; cidx < clients.size(); ++cidx)
+    {
+        if(clients[cidx].status == ClientStatus::InGame)
+        {
+            constexpr int numTiles = Simulation::MapSize * Simulation::MapSize;
+
+            char buf[numTiles * 2]; // for each value we add one space
+            char* it = buf;
+            
+            for(int i = 0; i < numTiles; ++i)
+            {
+                *it = tileMap[i] + 48; // converting to ascii
+                ++it;
+                *it = ' ';
+                ++it;
+            }
+
+            addMsg(sendBufs[cidx], Cmd::InitTileData, buf);
+        }
+    }
+}
+
 static volatile int gExitLoop = false;
 void sigHandler(int) {gExitLoop = true;}
 
@@ -137,7 +163,6 @@ int main()
         return 0;
     }
 
-    constexpr int maxClients = 10;
     FixedArray<Client, maxClients> clients;
     Array<char> sendBufs[maxClients];
     Array<char> recvBufs[maxClients];
@@ -328,8 +353,10 @@ int main()
 
                 ++end;
 
+                /*
                 printf("'%s' (%s) received msg: '%s'\n", thisClient.name,
                                                          getStatusStr(thisClient.status), begin);
+                                                         */
 
                 int cmd = 0;
                 for(int i = 1; i < Cmd::_count; ++i)
@@ -364,6 +391,31 @@ int main()
 
                     case Cmd::SetName:
                     {
+                        // validate if there is no whitespace
+                        // otherwise our serialization system will fail :D
+                        {
+                            bool valid = true;
+                            const char* str = begin;
+                            while(*str != '\0')
+                            {
+                                const char code = *str;
+
+                                if(code < 33 || code > 126)
+                                {
+                                    valid = false;
+                                    break;
+                                }
+
+                                ++str;
+                            }
+
+                            if(!valid)
+                            {
+                                addMsg(sendBuf, Cmd::MustRename, begin);
+                                break;
+                            }
+                        }
+
                         const bool isInGame = thisClient.status == ClientStatus::InGame;
 
                         // ...
@@ -422,6 +474,7 @@ int main()
                             {
                                 thisClient.status = ClientStatus::InGame;
                                 sim.setNewGame();
+                                sendInitTileData(clients, sendBufs, sim.tiles_[0]);
                             }
 
                             const int maxSize = sizeof(thisClient.name);
@@ -438,7 +491,8 @@ int main()
 
                                 for(const Client& client: clients)
                                 {
-                                    if(strcmp(client.name, player.name) == 0)
+                                    if(strcmp(client.name, player.name) == 0 &&
+                                            &thisClient != & client) // case of reconnection
                                     {
                                         update = false;
                                         break;
@@ -545,8 +599,69 @@ int main()
             if(doSim)
             {
                 exploEvents.clear();
-                sim.update(dt, exploEvents);
-                // now send the simulation and exploEvents
+
+                if(sim.update(dt, exploEvents))
+                {
+                    sendInitTileData(clients, sendBufs, sim.tiles_[0]);
+                }
+
+                // protocol:
+                // - time to start
+                // - num players
+                // - data for each player (name must not contain any white characters)
+                // - num bombs
+                // - data for each bomb
+                // - num explo events
+                // - data for each explo event
+                // 
+                // client can update the tiles based on exploEvents
+
+                char buf[2048]; // hope it is enough :DDD
+                int offset = 0;
+
+                const int numPlayers = getSize(sim.players_); // @TODO:
+
+                offset += sprintf(buf, "%f %d ", sim.timeToStart_, numPlayers);
+
+
+                for(int i = 0; i < numPlayers; ++i)
+                {
+                    const Player& p = sim.players_[i];
+                    offset += sprintf(buf + offset, "%f %f %f %d %f %d %d %s %f %d ",
+                            p.pos.x, p.pos.y, p.vel, p.dir, p.dropCooldown, p.hp, p.score,
+                            p.name, p.dmgTimer, p.prevDir);
+                }
+
+                offset += sprintf(buf + offset, "%d ", sim.bombs_.size());
+
+                for(const Bomb& b: sim.bombs_)
+                {
+                    assert(getSize(b.playerIdxs) == 2);
+
+                    offset += sprintf(buf + offset, "%d %d %d %f %d %d ",
+                            b.tile.x, b.tile.y, b.range, b.timer, b.playerIdxs[0],
+                            b.playerIdxs[1]);
+                }
+
+                offset += sprintf(buf + offset, "%d ", exploEvents.size());
+
+                for(const ExploEvent& e: exploEvents)
+                {
+                    offset += sprintf(buf + offset, "%d %d %d ", e.tile.x, e.tile.y, e.type);
+                }
+
+                /*
+                const int numBytes = offset + 1; // null char
+
+                printf("SIMULATION: %d bytes used (%d%%), %d available\n", numBytes,
+                       int(float(numBytes) / sizeof(buf) * 100.f), int(sizeof(buf)));
+                       */
+
+                for(int i = 0; i < clients.size(); ++i)
+                {
+                    if(clients[i].status == ClientStatus::InGame)
+                        addMsg(sendBufs[i], Cmd::Simulation, buf);
+                }
             }
         }
 

@@ -3,4 +3,5 @@ cavetiles
 *.ini
 *.dSYM
 .name
+.host
 server

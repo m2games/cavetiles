@@ -397,7 +397,8 @@ struct Simulation
     Simulation();
     void setNewGame();
     void processPlayerInput(const Action& action, const char* name);
-    void update(float dt, FixedArray<ExploEvent, 50>& exploEvents); // in seconds
+    // returns true if setNewGame() was called
+    bool update(float dt, FixedArray<ExploEvent, 50>& exploEvents); // in seconds
 
     enum {MapSize = 13, HP = 3};
     static const float dropCooldown_;
@@ -405,7 +406,7 @@ struct Simulation
     static const vec2 dirVecs_[Dir::Count];
 
     // this must be serializable !!! (memcpy for now (on the client side); server sends it as
-    // readable text)
+    // a readable text)
 
     int tiles_[MapSize][MapSize] = {}; // initialized to 0
     Player players_[2];
@@ -433,6 +434,7 @@ struct Cmd
         MustRename,
         PlayerInput,
         Simulation,
+        InitTileData,
 
         _count
     };
@@ -459,20 +461,23 @@ struct NetClient
     const int maxNameSize = 19;
     const float timerAliveMax = 5.f;
     const float timerReconnectMax = 5.f;
-    bool hasToReconnect = true; // due to tcp error or no server response
     int sockfd = -1;
     float timerReconnect = timerReconnectMax;
     bool simReadyToSync = false;
     bool inGame = false;
-    char inGameName[20]; // this will be used to identify the player in Simulation
     bool sendSetNameMsg = false;
     float timerSendSetNameMsg = timerReconnectMax;
+    Simulation sim;
+    char inGameName[20]; // this will be used to identify the player in Simulation
 
     // initialized in connect() (see cpp file)
     bool serverAlive;
     float timerAlive;
 
-    Simulation sim;
+    // can be set externally
+    char host[128] = "localhost";
+    bool hasToReconnect = true; // due to tcp error or no server response;
+
 };
 
 // use this to e.g. send a chat message
@@ -523,4 +528,5 @@ private:
     PlayerView playerViews_[2];
     Action actions_[2];
     FixedArray<ExploEvent, 50> exploEvents_;
+    char hostnameBuf_[128] = {};
 };
