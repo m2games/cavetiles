@@ -1,6 +1,6 @@
 do the simulation on the client when playing multiplayer mode; movment prediction
-for the player based on the input, for other players based on their current direction;
-
-recv buf big size issue (assert) - problem with pausing in the debugger (both server and client)
+for the player based on the input, for other players based on their current direction
 
 non-blocking connect
+
+sometimes SIGPIPE is triggered in gdb (when stopping before sending the commands)
