@@ -263,15 +263,17 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
                     break;
 
                 recvBuf.resize(recvBuf.size() * 2);
+
                 if(recvBuf.size() > 10000)
                 {
-                    addLogMsg(logBuf, "recvBuf big size issue, exiting\n");
-                    assert(false);
-                    break;
+                    addLogMsg(logBuf, "recvBuf BIG SIZE ISSUE, clearing the buffer\n");
+                    recvBufNumUsed = 0;
                 }
             }
         }
     }
+
+    bool newGame = false;
 
     // process received data
     {
@@ -313,7 +315,7 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
             switch(cmd)
             {
                 case 0:
-                    // fuck...
+                    // fuck... (log api)
 
                     addLogMsg(logBuf, "WARNING unknown command received: ");
                     addLogMsg(logBuf, begin);
@@ -428,6 +430,8 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
                 }
                 case Cmd::InitTileData:
                 {
+                    newGame = true;
+
                     // @ !!! we are not validating the data
 
                     const char* ptr = begin;
@@ -464,11 +468,15 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
     // update the tiles based on the exploEvents
     // not inside Cmd::Simulation: because it is inside a loop
     // we want to iterate over all exploEvents just once
-    for(ExploEvent& e: exploEvents)
+
+    if(!newGame) // so we don't override new map (server called sim.setNewGame())
     {
-        if(e.type == ExploEvent::Crate)
-            sim.tiles_[e.tile.y][e.tile.x] = 0;
+        for(ExploEvent& e: exploEvents)
+        {
+            if(e.type == ExploEvent::Crate)
+                sim.tiles_[e.tile.y][e.tile.x] = 0;
         }
+    }
 }
 
 } // netcode

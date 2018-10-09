@@ -1,5 +1,12 @@
 #include "glad.h"
 #include <GLFW/glfw3.h>
+
+// older versions of glfw on ubuntu don't define this...
+// I should check-in glfw to the repository
+#ifndef GLFW_TRUE
+#define GLFW_TRUE 1
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>

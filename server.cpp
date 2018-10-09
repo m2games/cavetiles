@@ -297,12 +297,13 @@ int main()
                         break;
 
                     recvBuf.resize(recvBuf.size() * 2);
+
                     if(recvBuf.size() > 10000)
                     {
-                        printf("recvBuf big size issue, removing client: '%s' (%s)\n",
-                               client.name, getStatusStr(client.status));
-                        client.remove = true;
-                        break;
+                        printf("recvBuf BIG SIZE ISSUE, clearing the buffer for"
+                               " client: '%s' (%s)\n", client.name, getStatusStr(client.status));
+
+                        recvBufNumUsed = 0;
                     }
                 }
             }
@@ -391,6 +392,8 @@ int main()
 
                     case Cmd::SetName:
                     {
+                        // @ too much corner cases...
+
                         // validate if there is no whitespace
                         // otherwise our serialization system will fail :D
                         {
@@ -485,27 +488,51 @@ int main()
                             addMsg(sendBuf, Cmd::NameOk, thisClient.name);
 
                             // update the player name in the simulation
+
+                            // if there is already a player with the target name
+                            // (e.g. other client with the same name left earlier) - just skip
+                            // so we don't end up with e.g. two players with the same name
+
+                            bool skipSettingPlayerName = false;
+
                             for(Player& player: sim.players_)
                             {
-                                bool update = true;
-
-                                for(const Client& client: clients)
+                                if(strcmp(player.name, thisClient.name) == 0)
                                 {
-                                    if(strcmp(client.name, player.name) == 0 &&
-                                            &thisClient != & client) // case of reconnection
-                                    {
-                                        update = false;
-                                        break;
-                                    }
-                                }
-
-                                if(update)
-                                {
-                                    memcpy(player.name, thisClient.name, sizeof(thisClient.name));
+                                    skipSettingPlayerName = true;
                                     break;
                                 }
                             }
 
+                            if(!skipSettingPlayerName)
+                            {
+                                for(Player& player: sim.players_)
+                                {
+                                    bool nameFree = true;
+
+                                    for(const Client& client: clients)
+                                    {
+                                        if(client.status != ClientStatus::InGame)
+                                            continue;
+
+                                        if(strcmp(client.name, player.name) == 0 &&
+                                                &thisClient != &client) // case of reconnection
+                                        {
+                                            nameFree = false;
+                                            break;
+                                        }
+                                    }
+
+                                    if(nameFree)
+                                    {
+                                        memcpy(player.name, thisClient.name,
+                                                sizeof(thisClient.name));
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // send announcement
                             for(int i = 0; i < clients.size(); ++i)
                             {
                                 if(clients[i].status == ClientStatus::InGame)
@@ -650,12 +677,14 @@ int main()
                     offset += sprintf(buf + offset, "%d %d %d ", e.tile.x, e.tile.y, e.type);
                 }
 
-                /*
                 const int numBytes = offset + 1; // null char
+                int percentOccupied = int(float(numBytes) / sizeof(buf) * 100.f);
 
-                printf("SIMULATION: %d bytes used (%d%%), %d available\n", numBytes,
-                       int(float(numBytes) / sizeof(buf) * 100.f), int(sizeof(buf)));
-                       */
+                if(percentOccupied > 50)
+                {
+                    printf("SIMULATION: %d bytes used (%d%%), %d available\n", numBytes,
+                            percentOccupied, int(sizeof(buf)));
+                }
 
                 for(int i = 0; i < clients.size(); ++i)
                 {
