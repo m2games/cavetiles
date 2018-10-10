@@ -1,6 +1,3 @@
-do the simulation on the client when playing multiplayer mode; movment prediction
-for the player based on the input, for other players based on their current direction
-
-non-blocking connect
-
-sometimes SIGPIPE is triggered in gdb (when stopping before sending the commands)
+* client-side prediction
+* non-blocking connect
+* SIGPIPE is triggered in gdb (when stopping before sending the commands)

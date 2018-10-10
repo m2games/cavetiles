@@ -738,12 +738,12 @@ void GameScene::update()
 
     netClient_.update(frame_.time, nameToSetBuf_, exploEvents_, actions_[0]);
 
-    // @TODO: do the simulation on the client even if playing online (interpolation)
-    // but then don't push exploEvents here ins sim_.update()
+    // @TODO: client-side prediction
+    // but then don't push explo events here in sim_.update()
     if(!netClient_.inGame)
         sim_.update(frame_.time, exploEvents_);
 
-    // @TODO: interpolation
+    // @TODO: client-side prediction
     else if(netClient_.simReadyToSync)
         sim_ = netClient_.sim;
 
