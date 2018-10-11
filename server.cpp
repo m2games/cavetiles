@@ -60,6 +60,11 @@ const char* getStatusStr(ClientStatus code)
     assert(false);
 }
 
+bool wouldBlock()
+{
+    return errno == EAGAIN || errno == EWOULDBLOCK;
+}
+
 static constexpr int maxClients = 10;
 
 void sendInitTileData(FixedArray<Client, maxClients>& clients, Array<char>* sendBufs, int* tileMap)
@@ -223,10 +228,11 @@ int main()
 
             if(clientSockfd == -1)
             {
-                if(errno != EAGAIN || errno != EWOULDBLOCK)
+                // this can't be combined with the parent if
+                if(!wouldBlock())
                 {
                     perror("accept()");
-                    break;
+                    assert(false);
                 }
             }
             else
@@ -276,11 +282,13 @@ int main()
 
                 if(rc == -1)
                 {
-                    if(errno != EAGAIN || errno != EWOULDBLOCK)
+                    // this can't be combined with the parent if
+                    if(!wouldBlock())
                     {
                         perror("recv() failed");
                         client.remove = true;
                     }
+
                     break;
                 }
                 else if(rc == 0)
@@ -593,24 +601,6 @@ int main()
             recvBufNumUsed -= numToFree;
         }
 
-        // inform players if someone will leave the game
-        for(const Client& client: clients)
-        {
-            if(client.remove && client.status == ClientStatus::InGame)
-            {
-                char buf[64];
-                snprintf(buf, sizeof(buf), "'%s' has left", client.name);
-
-                for(int i = 0; i < clients.size(); ++i)
-                {
-                    if(clients[i].status == ClientStatus::InGame && !clients[i].remove)
-                    {
-                        addMsg(sendBufs[i], Cmd::Chat, buf);
-                    }
-                }
-            }
-        }
-
         // run the simulation
         {
             bool doSim = false;
@@ -707,8 +697,12 @@ int main()
 
                 if(rc == -1)
                 {
-                    perror("send() failed");
-                    clients[i].remove = true;
+                    // this can't be combined with the parent if
+                    if(!wouldBlock())
+                    {
+                        perror("send() failed");
+                        clients[i].remove = true;
+                    }
                 }
                 else
                     buf.erase(0, rc);
@@ -716,11 +710,24 @@ int main()
         }
 
         // remove some clients
-        for(int i = 0; i < clients.size(); ++i)
+        for(int cidx = 0; cidx < clients.size(); ++cidx)
         {
-            Client& client = clients[i];
+            Client& client = clients[cidx];
             if(client.remove || client.status == ClientStatus::Browser)
             {
+                // inform other players if someone will leave the game
+                if(client.status == ClientStatus::InGame)
+                {
+                    char buf[64];
+                    snprintf(buf, sizeof(buf), "'%s' has left", client.name);
+
+                    for(int i = 0; i < clients.size(); ++i)
+                    {
+                        if(!clients[i].remove && clients[i].status == ClientStatus::InGame)
+                            addMsg(sendBufs[i], Cmd::Chat, buf);
+                    }
+                }
+
                 printf("removing client '%s' (%s)\n", client.name,
                        getStatusStr(client.status));
 
@@ -729,12 +736,12 @@ int main()
                 client = clients.back();
 
                 const int lastIdx = clients.size() - 1;
-                sendBufs[i].swap(sendBufs[lastIdx]);
-                recvBufs[i].swap(recvBufs[lastIdx]);
-                recvBufsNumUsed[i] = recvBufsNumUsed[lastIdx];
+                sendBufs[cidx].swap(sendBufs[lastIdx]);
+                recvBufs[cidx].swap(recvBufs[lastIdx]);
+                recvBufsNumUsed[cidx] = recvBufsNumUsed[lastIdx];
 
                 clients.popBack();
-                --i;
+                --cidx;
             }
         }
 
