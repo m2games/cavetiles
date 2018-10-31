@@ -354,6 +354,8 @@ struct PlayerView
     Anim anims[Dir::Count];
 };
 
+enum {MaxPlayers = 4}; // @
+
 struct Bomb
 {
     void addPlayer(int idx);
@@ -365,7 +367,7 @@ struct Bomb
     float timer;
 
     // players allowed to stand on a bomb (used for resolving collisions)
-    int playerIdxs[2] = {-1, -1};
+    int playerIdxs[MaxPlayers] = {-1, -1, -1, -1};
 };
 
 struct ExploEvent
@@ -392,11 +394,19 @@ struct Action // @TODO: rename to PlayerAction?
     int drop = false;
 };
 
+struct BotData
+{
+    float timerDrop = 0.f;
+    float timerDir = 0.f;
+    int dir = Dir::Nil;
+};
+
 struct Simulation
 {
     Simulation();
     void setNewGame();
     void processPlayerInput(const Action& action, const char* name);
+    void updateAndProcessBotInput(const char* name, float dt);
     // returns true if setNewGame() was called
     bool update(float dt, FixedArray<ExploEvent, 50>& exploEvents); // in seconds
 
@@ -404,12 +414,12 @@ struct Simulation
     static const float dropCooldown_;
     static const float tileSize_;
     static const vec2 dirVecs_[Dir::Count];
+    BotData botData_[MaxPlayers];
 
-    // this must be serializable !!! (memcpy for now (on the client side); server sends it as
-    // a readable text)
+    // this must be serializable !!! server sends it as a readable text)
 
     int tiles_[MapSize][MapSize] = {}; // initialized to 0
-    Player players_[2];
+    FixedArray<Player, MaxPlayers> players_;
     FixedArray<Bomb, 50> bombs_;
     float timeToStart_ = 0.f;
 };
@@ -510,6 +520,8 @@ private:
         Texture tile;
         Texture player1;
         Texture player2;
+        Texture player3;
+        Texture player4;
         Texture bomb;
         Texture explosion;
     } textures_;
@@ -525,8 +537,31 @@ private:
     char inputNameBuf_[20] = {}; // flush to nameToSetBuf_ on ENTER
     char chatBuf_[128] = {};
     Simulation sim_;
-    PlayerView playerViews_[2];
+    PlayerView playerViews_[MaxPlayers];
     Action actions_[2];
     FixedArray<ExploEvent, 50> exploEvents_;
     char hostnameBuf_[128] = {};
+
+    struct InputType
+    {
+        enum
+        {
+            Nil,
+            Player1,
+            Player2,
+            Bot
+        };
+    };
+
+    int inputs_[MaxPlayers];
+
+    int numActiveInputs() const
+    {
+        int numActive = 0;
+        for(int i: inputs_)
+        {
+            if(i) ++numActive;
+        }
+        return numActive;
+    }
 };

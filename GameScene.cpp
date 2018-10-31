@@ -380,8 +380,8 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
                     sscanf(buf, "%d", &numPlayers);
                     gotoNextWord(&buf, 1);
 
-                    // @TODO:
-                    assert(numPlayers == getSize(sim.players_));
+                    sim.players_.resize(numPlayers);
+                    assert(numPlayers == sim.players_.size());
 
                     for(int i = 0; i < numPlayers; ++i)
                     {
@@ -578,8 +578,6 @@ void Anim::update(const float dt)
 
 GameScene::GameScene()
 {
-    assert(getSize(playerViews_) == getSize(sim_.players_));
-
     // @TODO: configuration file? :D
     {
         FILE* file;
@@ -608,8 +606,12 @@ GameScene::GameScene()
     font_ = createFontFromFile("res/Exo2-Black.otf", 38, 512);
 
     textures_.tile = createTextureFromFile("res/tiles.png");
+
     textures_.player1 = createTextureFromFile("res/player1.png");
     textures_.player2 = createTextureFromFile("res/player2.png");
+    textures_.player3 = createTextureFromFile("res/player3.png");
+    textures_.player4 = createTextureFromFile("res/player4.png");
+
     textures_.bomb = createTextureFromFile("res/bomb000.png");
     textures_.explosion = createTextureFromFile("res/Explosion.png");
 
@@ -630,11 +632,12 @@ GameScene::GameScene()
     emitter_.reserve();
 
 
-    // specific configuration for each player view
-    assert(getSize(playerViews_) == 2);
+    assert(getSize(playerViews_) == 4 && MaxPlayers == getSize(playerViews_));
 
     playerViews_[0].texture = &textures_.player1;
     playerViews_[1].texture = &textures_.player2;
+    playerViews_[2].texture = &textures_.player3;
+    playerViews_[3].texture = &textures_.player4;
 
     // tightly coupled to the texture assets
     for(int i = Dir::Up; i < Dir::Count; ++i)
@@ -658,11 +661,29 @@ GameScene::GameScene()
             anim.frames[i] = {frameSize * x, frameSize * i, frameSize, frameSize};
         }
 
-        for(int j = 0; j < 2; ++j)
+        for(int j = 0; j < getSize(playerViews_); ++j)
         {
             playerViews_[j].anims[i] = anim;
         }
     }
+
+    // set players in simulation
+
+    assert(getSize(inputs_) == 4 && MaxPlayers == getSize(inputs_));
+
+    inputs_[0] = InputType::Player1;
+    inputs_[1] = InputType::Player2;
+    inputs_[2] = InputType::Bot;
+    inputs_[3] = InputType::Bot;
+
+    const int numActive = numActiveInputs();
+
+    sim_.players_.resize(numActive);
+
+    for(int i = 0; i < numActive; ++i)
+        sprintf(sim_.players_[i].name, "player%d", i);
+
+    sim_.setNewGame();
 }
 
 GameScene::~GameScene()
@@ -672,6 +693,8 @@ GameScene::~GameScene()
     deleteTexture(textures_.tile);
     deleteTexture(textures_.player1);
     deleteTexture(textures_.player2);
+    deleteTexture(textures_.player3);
+    deleteTexture(textures_.player4);
     deleteTexture(textures_.bomb);
     deleteTexture(textures_.explosion);
     FCHECK( FMOD_Sound_Release(sounds_.bomb) );
@@ -723,12 +746,23 @@ void GameScene::processInput(const Array<WinEvent>& events)
     if(netClient_.inGame)
         return;
 
-    assert(getSize(sim_.players_) >= getSize(actions_));
+    assert(getSize(actions_) >= 2);
 
-    for(int i = 0; i < getSize(actions_); ++i)
+    int idx = 0;
+    for(int input: inputs_)
     {
-        Action& action = actions_[i];
-        sim_.processPlayerInput(action, sim_.players_[i].name);
+        if(input == InputType::Player1)
+            sim_.processPlayerInput(actions_[0], sim_.players_[idx].name);
+
+        else if(input == InputType::Player2)
+            sim_.processPlayerInput(actions_[1], sim_.players_[idx].name);
+
+        else if(input == InputType::Bot)
+            sim_.updateAndProcessBotInput(sim_.players_[idx].name, frame_.time);
+        else
+            continue;
+
+        ++idx;
     }
 }
 
@@ -749,7 +783,7 @@ void GameScene::update()
 
     emitter_.update(frame_.time);
 
-    for(int i = 0; i < getSize(sim_.players_); ++i)
+    for(int i = 0; i < sim_.players_.size(); ++i)
     {
         playerViews_[i].anims[sim_.players_[i].dir].update(frame_.time);
     }
@@ -869,9 +903,13 @@ void GameScene::render(const GLuint program)
 
     // players
 
-    for(int i = 0; i < getSize(sim_.players_); ++i)
+    for(int i = 0; i < sim_.players_.size(); ++i)
     {
         Player& player = sim_.players_[i];
+
+        if(player.hp == 0)
+            continue;
+
         PlayerView& playerView = playerViews_[i];
 
         Rect rect;
@@ -942,6 +980,9 @@ void GameScene::render(const GLuint program)
         const float h = 2.f;
         for(const Player& player: sim_.players_)
         {
+            if(player.hp == 0)
+                continue;
+
             // * hp
             rect[0].pos = player.pos;
             rect[0].size = {float(player.hp) /Simulation::HP * sim_.tileSize_, h};
@@ -957,8 +998,8 @@ void GameScene::render(const GLuint program)
         }
 
         uniform1i(program, "mode", FragmentMode::Color);
-        updateGLBuffers(glBuffers_, rects_, getSize(sim_.players_) * 2.f);
-        renderGLBuffers(glBuffers_, getSize(sim_.players_) * 2.f);
+        updateGLBuffers(glBuffers_, rects_, rect - rects_);
+        renderGLBuffers(glBuffers_, rect - rects_);
     }
 
     // names
@@ -975,6 +1016,9 @@ void GameScene::render(const GLuint program)
 
         for(Player& player: sim_.players_)
         {
+            if(player.hp == 0)
+                continue;
+
             text.str = player.name;
             text.pos = player.pos;
             text.pos.y -= 6.f;
@@ -1061,7 +1105,7 @@ void GameScene::render(const GLuint program)
         rect.size = vec2(20.f);
         rect.pos = {text.pos.x + textSize.x - rect.size.x, text.pos.y};
 
-        for(int i = 0; i < getSize(sim_.players_); ++i)
+        for(int i = 0; i < sim_.players_.size(); ++i)
         {
             const Player& player = sim_.players_[i];
             const PlayerView& playerView = playerViews_[i];
@@ -1084,6 +1128,37 @@ void GameScene::render(const GLuint program)
 
     ImGui::Begin("cavetiles");
     ImGui::Spacing();
+
+    ImGui::Text("offline mode inputs:");
+    {
+        const char* itypes[] =
+        {
+            "none",
+            "player 1",
+            "player 2",
+            "bot"
+        };
+
+        const int prevNumActiveInputs = numActiveInputs();
+
+        for(int i = 0; i < getSize(inputs_); ++i)
+        {
+            ImGui::Text("%d.", i);
+            ImGui::SameLine();
+            ImGui::PushID(i);
+            ImGui::Combo("", &inputs_[i], itypes, getSize(itypes));
+            ImGui::PopID();
+        }
+        
+        const int newNumActiveInputs = numActiveInputs();
+
+        if(prevNumActiveInputs != newNumActiveInputs)
+        {
+            sim_.players_.resize(newNumActiveInputs);
+            sim_.setNewGame();
+        }
+    }
+
     ImGui::Text("controls:\n"
                 "\n"
                 "Esc       - display score\n"
@@ -1146,7 +1221,7 @@ void GameScene::render(const GLuint program)
 
     ImGui::Spacing();
     ImGui::Text("netcode::Client log");
-    ImGui::InputTextMultiline("##netcode::Client log", netClient_.logBuf.data(),
+    ImGui::InputTextMultiline("##netcode::NetClient log", netClient_.logBuf.data(),
         netClient_.logBuf.size(), ImVec2(300.f, 0.f), ImGuiInputTextFlags_ReadOnly);
 
     ImGui::Spacing();

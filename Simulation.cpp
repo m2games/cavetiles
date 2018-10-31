@@ -115,22 +115,7 @@ Simulation::Simulation()
 {
     assert(MapSize % 2);
 
-    {
-        Bomb bomb;
-        assert(getSize(bomb.playerIdxs) == getSize(players_));
-    }
-
-    for(int i = 0; i < getSize(players_); ++i)
-    {
-        Player& player = players_[i];
-
-        sprintf(player.name, "player%d", i);
-
-        player.vel = 80.f;
-    }
-
-    // tilemap
-    // * edges
+    // tilemap edges
 
     for(int i = 0; i < MapSize; ++i)
     {
@@ -140,7 +125,7 @@ Simulation::Simulation()
         tiles_[i][MapSize - 1] = 2;
     }
 
-    // * pillars
+    // tilemap pillars
 
     for(int i = 2; i < MapSize - 1; i += 2)
     {
@@ -149,33 +134,50 @@ Simulation::Simulation()
             tiles_[j][i] = 2;
         }
     }
-
-    setNewGame();
 }
 
 void Simulation::setNewGame()
 {
+    // @ set BotData to default state here if you want
     bombs_.clear();
 
-    for(Player& player: players_)
+    for(int i = 0; i < players_.maxSize(); ++i)
     {
+        Player& player = players_[i];
+        player.vel = 80.f;
         player.dropCooldown = 0.f;
         player.hp = HP;
         // so player.prevDir (***) won't be overwritten in processPlayerInput()
         player.dir = Dir::Nil;
+
+        switch(i)
+        {
+            case 0:
+                player.pos = vec2(tileSize_ * 1);
+                player.prevDir = Dir::Right;
+                break;
+
+            case 1:
+                player.pos = vec2(tileSize_ * (MapSize - 2));
+                player.prevDir = Dir::Left;
+                break;
+
+            case 2:
+                player.pos = vec2(tileSize_) * vec2(1, MapSize - 2);
+                player.prevDir = Dir::Right;
+                break;
+
+            case 3:
+                player.pos = vec2(tileSize_) * vec2(MapSize - 2, 1);
+                player.prevDir = Dir::Down;
+                break;
+
+            default: assert(false);
+        }
     }
 
-    // specific configuration for each player
-    assert(getSize(players_) == 2);
 
-    players_[0].pos = vec2(tileSize_ * 1);
-    players_[0].prevDir = Dir::Down; // ***
-
-    players_[1].pos = vec2(tileSize_ * (MapSize - 2));
-    players_[1].prevDir = Dir::Left;
-
-    // tilemap
-    // * crates
+    // tilemap crates
 
     int freeTiles[MapSize * MapSize];
     int numFreeTiles = 0;
@@ -226,6 +228,50 @@ end:;
     }
 }
 
+void Simulation::updateAndProcessBotInput(const char* name, float dt)
+{
+    const Player* pptr = nullptr;
+
+    for(const Player& p: players_)
+    {
+        if(!strncmp(name, p.name, 20))
+                pptr = &p;
+    }
+
+    assert(pptr);
+
+    const Player& botPlayer = *pptr;
+    (void)botPlayer;
+    BotData& botData = botData_[pptr - players_.begin()];
+    Action action;
+
+    botData.timerDrop += dt;
+    botData.timerDir += dt;
+
+    if(botData.timerDir > 0.5f)
+    {
+        botData.timerDir = 0.f;
+        botData.dir = getRandomInt(0, 4);
+    }
+
+    if(botData.timerDrop > 10.f)
+    {
+        botData.timerDrop = 0.f;
+        action.drop = true;
+    }
+
+    switch(botData.dir)
+    {
+        case Dir::Up: action.up = true; break;
+        case Dir::Down: action.down = true; break;
+        case Dir::Right: action.right = true; break;
+        case Dir::Left: action.left = true; break;
+        default: break;
+    }
+
+    processPlayerInput(action, name);
+}
+
 void Simulation::processPlayerInput(const Action& action, const char* name)
 {
     if(timeToStart_ > 0.f)
@@ -242,6 +288,9 @@ void Simulation::processPlayerInput(const Action& action, const char* name)
     assert(pptr);
 
     Player& player = *pptr;
+
+    if(player.hp == 0)
+        return;
 
     if(player.dir)
         player.prevDir = player.dir;
@@ -277,7 +326,7 @@ void Simulation::processPlayerInput(const Action& action, const char* name)
             {
                 if(isCollision(player.pos, targetTile, tileSize_))
                 {
-                    const int playerIdx = &player - players_;
+                    const int playerIdx = &player - players_.begin();
                     bomb.addPlayer(playerIdx);
                 }
             }
@@ -476,7 +525,7 @@ end:
     for(const Player& player: players_)
         numLosers += (player.hp == 0);
 
-    if(numLosers >= getSize(players_) - 1)
+    if(numLosers && numLosers >= players_.size() - 1)
     {
         for(Player& player: players_)
             player.score += player.hp > 0;

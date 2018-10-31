@@ -636,7 +636,7 @@ int main()
                 char buf[2048]; // hope it is enough :DDD
                 int offset = 0;
 
-                const int numPlayers = getSize(sim.players_); // @TODO:
+                const int numPlayers = sim.players_.size();
 
                 offset += sprintf(buf, "%f %d ", sim.timeToStart_, numPlayers);
 

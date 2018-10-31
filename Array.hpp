@@ -128,6 +128,7 @@ public:
         ++size_;
     }
 
+    void     resize(int newSize)     {size_ = newSize;}
     int      maxSize()         const {return N;}
     void     clear()                 {size_ = 0;}
     void     popBack()               {--size_;}
