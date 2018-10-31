@@ -2,6 +2,7 @@
 #include "imgui/imgui.h"
 #include "GLFW/glfw3.h"
 #include <stdio.h>
+#include <stdarg.h>
 
 // includes for the netcode
 #include <sys/types.h>
@@ -16,35 +17,28 @@
 namespace netcode
 {
 
-void addLogMsg(Array<char>& buf, const char* const msg)
+void log(Array<char>& buf, const char* fmt, ...)
 {
-    if(buf.size() > 1000)
-        buf.clear();
+    static char bigbuf[1024];
 
-    int len = strlen(msg) + 1; // '\0'
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(bigbuf, (sizeof bigbuf) - 1, fmt, args);
+    va_end(args);
 
-    int prevSize = buf.size();
+    int len = strlen(bigbuf);
+    bigbuf[len++] = '\n';
 
-    if(prevSize)
-        prevSize -= 1; // so we will overwrite the null character
+    const int prevSize = buf.size();
+    buf.resize(len + prevSize);
+    memmove(buf.begin() + len, buf.begin(), prevSize);
+    memcpy(buf.begin(), bigbuf, len);
 
-    buf.resize(prevSize + len);
-    assert(snprintf(buf.data() + prevSize, len, "%s", msg) == len - 1);
-}
-
-void addLogMsgErno(Array<char>& buf, const char* const msg, bool gaiEc = 0)
-{
-    // this sucks, sucks, sucks...
-
-    addLogMsg(buf, msg);
-    addLogMsg(buf, ": ");
-
-    if(!gaiEc)
-        addLogMsg(buf, strerror(errno));
-    else
-        addLogMsg(buf, gai_strerror(gaiEc));
-
-    addLogMsg(buf, "\n");
+    if(buf.size() > 9000)
+    {
+        buf.resize(9000);
+        buf.back() = '\0';
+    }
 }
 
 // returns socket descriptior, -1 if failed
@@ -62,7 +56,7 @@ int connect(Array<char>& logBuf, const char* host)
         const int ec = getaddrinfo(host, "3000", &hints, &list);
         if(ec != 0)
         {
-            addLogMsgErno(logBuf, "getaddrinfo() failed", ec);
+            log(logBuf, "getaddrinfo() failed: %s", gai_strerror(ec));
             return -1;
         }
     }
@@ -75,43 +69,35 @@ int connect(Array<char>& logBuf, const char* host)
         sockfd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
         if(sockfd == -1)
         {
-            addLogMsgErno(logBuf, "socket() failed");
-            
+            log(logBuf, "socket() failed: %s", strerror(errno));
             continue;
         }
 
         if(connect(sockfd, it->ai_addr, it->ai_addrlen) == -1)
         {
             close(sockfd);
-
-            addLogMsgErno(logBuf, "connect() failed");
-
+            log(logBuf, "connect() failed: %s", strerror(errno));
             continue;
         }
 
         char name[INET6_ADDRSTRLEN];
         inet_ntop(it->ai_family, get_in_addr(it->ai_addr), name, sizeof(name));
 
-        // fuck...
-        addLogMsg(logBuf, "connected to ");
-        addLogMsg(logBuf, name);
-        addLogMsg(logBuf, "\n");
+        log(logBuf, "connected to %s", name);
         break;
     }
     freeaddrinfo(list);
 
     if(it == nullptr)
     {
-        addLogMsg(logBuf, "connection procedure failed\n");
+        log(logBuf, "connection procedure failed");
         return -1;
     }
 
     if(fcntl(sockfd, F_SETFL, O_NONBLOCK) == -1)
     {
         close(sockfd);
-
-        addLogMsgErno(logBuf, "fcntl() failed");
-
+        log(logBuf, "fcntl() failed: %s", strerror(errno));
         return -1;
     }
 
@@ -120,9 +106,7 @@ int connect(Array<char>& logBuf, const char* host)
         if(setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &option, sizeof(option)) == -1)
         {
             close(sockfd);
-
-            addLogMsgErno(logBuf, "setsockopt() (TCP_NODELAY) failed");
-
+            log(logBuf, "setsockopt() (TCP_NODELAY) failed: %s", strerror(errno));
             return -1;
         }
     }
@@ -134,8 +118,12 @@ NetClient::NetClient()
 {
     sendBuf.reserve(500);
     recvBuf.resize(500);
-    logBuf.reserve(500);
-    addLogMsg(logBuf, ""); // to terminate with null
+    logBuf.reserve(10000);
+    logBuf.pushBack('\0'); // terminate with null
+
+    // so we have valid data to display during the time when inGame is set to
+    // true but no Simulation data arrived from the server yet
+    sim.setNewGame(); 
 }
 
 NetClient::~NetClient()
@@ -176,7 +164,6 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
 
     if(hasToReconnect)
     {
-        simReadyToSync = false;
         inGame = false;
 
         if(timerReconnect >= timerReconnectMax)
@@ -226,7 +213,7 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
             else
             {
                 hasToReconnect = true;
-                addLogMsg(logBuf, "no PONG response from server, will try to reconnect\n");
+                log(logBuf, "no PONG response from server, will try to reconnect\n");
             }
         }
     }
@@ -243,15 +230,15 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
             {
                 if(errno != EAGAIN || errno != EWOULDBLOCK)
                 {
-                    addLogMsgErno(logBuf, "recv() failed");
-
+                    log(logBuf, "recv() failed: %s", strerror(errno));
                     hasToReconnect = true;
                 }
+
                 break;
             }
             else if(rc == 0)
             {
-                addLogMsg(logBuf, "server has closed the connection\n");
+                log(logBuf, "server has closed the connection\n");
                 hasToReconnect = true;
                 break;
             }
@@ -266,7 +253,7 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
 
                 if(recvBuf.size() > 10000)
                 {
-                    addLogMsg(logBuf, "recvBuf BIG SIZE ISSUE, clearing the buffer\n");
+                    log(logBuf, "recvBuf BIG SIZE ISSUE, clearing the buffer\n");
                     recvBufNumUsed = 0;
                 }
             }
@@ -315,12 +302,7 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
             switch(cmd)
             {
                 case 0:
-                    // fuck... (log api)
-
-                    addLogMsg(logBuf, "WARNING unknown command received: ");
-                    addLogMsg(logBuf, begin);
-                    addLogMsg(logBuf, "\n");
-
+                    log(logBuf, "WARNING unknown command received: %s", begin);
                     break;
 
                 case Cmd::Ping:
@@ -332,20 +314,19 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
                     break;
 
                 case Cmd::Chat:
-                    addLogMsg(logBuf, begin);
-                    addLogMsg(logBuf, "\n");
+                    log(logBuf, begin);
                     break;
 
                 case Cmd::GameFull:
                 {
-                    addLogMsg(logBuf, "GAME_FULL\n");
+                    log(logBuf, "%s", getCmdStr(cmd));
                     sendSetNameMsg = true;
                     break;
                 }
 
                 case Cmd::NameOk:
                 {
-                    addLogMsg(logBuf, "NAME_OK\n");
+                    log(logBuf, "%s %s", getCmdStr(cmd), begin);
                     inGame = true;
                     int len = strlen(begin);
                     assert(len <= maxNameSize);
@@ -357,11 +338,11 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
                 case Cmd::MustRename:
                 {
                     if(inGame)
-                        addLogMsg(logBuf, "MUST_RENAME: could not rename\n");
+                        log(logBuf, "%s, could not rename to %s", getCmdStr(cmd), begin);
 
                     else
                     {
-                        addLogMsg(logBuf, "MUST_RENAME: could not join\n");
+                        log(logBuf, "%s, could not join as %s", getCmdStr(cmd), begin);
                         sendSetNameMsg = true;
                     }
 
@@ -425,7 +406,6 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
                         gotoNextWord(&buf, 3);
                     }
 
-                    simReadyToSync = true;
                     break;
                 }
                 case Cmd::InitTileData:
@@ -457,8 +437,7 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
 
         if(rc == -1)
         {
-            addLogMsgErno(logBuf, "send() failed");
-
+            log(logBuf, "send() failed: %s", strerror(errno));
             hasToReconnect = true;
         }
         else
@@ -1167,7 +1146,7 @@ void GameScene::render(const GLuint program)
 
     ImGui::Text("controls:\n"
                 "\n"
-                "Esc       - display score\n"
+                "   Esc    - display score\n"
                 "\n"
                 "player1:\n"
                 "   WSAD   - move\n"

@@ -473,7 +473,6 @@ struct NetClient
     const float timerReconnectMax = 5.f;
     int sockfd = -1;
     float timerReconnect = timerReconnectMax;
-    bool simReadyToSync = false;
     bool inGame = false;
     bool sendSetNameMsg = false;
     float timerSendSetNameMsg = timerReconnectMax;
