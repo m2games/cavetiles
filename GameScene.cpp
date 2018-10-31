@@ -623,7 +623,7 @@ GameScene::GameScene()
 
     emitter_.spawn.size = vec2(5.f);
     emitter_.spawn.pos = vec2(210.f);
-    assert(emitter_.spawn.pos.x <= (Simulation::MapSize - 1) * sim_.tileSize_);
+    assert(emitter_.spawn.pos.x <= (Simulation::MapSize - 1) * Simulation::tileSize_);
     emitter_.spawn.hz = 100.f;
     emitter_.particleRanges.life = {3.f, 6.f};
     emitter_.particleRanges.size = {0.25f, 2.f};
@@ -667,7 +667,7 @@ GameScene::GameScene()
         }
     }
 
-    // set players in simulation
+    // set players in offline simulation
 
     assert(getSize(inputs_) == 4 && MaxPlayers == getSize(inputs_));
 
@@ -678,12 +678,12 @@ GameScene::GameScene()
 
     const int numActive = numActiveInputs();
 
-    sim_.players_.resize(numActive);
+    offlineSim_.players_.resize(numActive);
 
     for(int i = 0; i < numActive; ++i)
-        sprintf(sim_.players_[i].name, "player%d", i);
+        sprintf(offlineSim_.players_[i].name, "player%d", i);
 
-    sim_.setNewGame();
+    offlineSim_.setNewGame();
 }
 
 GameScene::~GameScene()
@@ -706,7 +706,8 @@ void GameScene::processInput(const Array<WinEvent>& events)
     for(Action& action: actions_)
         action.drop = false;
 
-    const bool gameStarted = sim_.timeToStart_ <= 0.f;
+    const bool gameStarted =  netClient_.inGame ? (netClient_.sim.timeToStart_ <= 0.f) :
+        (offlineSim_.timeToStart_ <= 0.f);
 
     if(!gameStarted)
         showScore_ = false;
@@ -752,13 +753,13 @@ void GameScene::processInput(const Array<WinEvent>& events)
     for(int input: inputs_)
     {
         if(input == InputType::Player1)
-            sim_.processPlayerInput(actions_[0], sim_.players_[idx].name);
+            offlineSim_.processPlayerInput(actions_[0], offlineSim_.players_[idx].name);
 
         else if(input == InputType::Player2)
-            sim_.processPlayerInput(actions_[1], sim_.players_[idx].name);
+            offlineSim_.processPlayerInput(actions_[1], offlineSim_.players_[idx].name);
 
         else if(input == InputType::Bot)
-            sim_.updateAndProcessBotInput(sim_.players_[idx].name, frame_.time);
+            offlineSim_.updateAndProcessBotInput(offlineSim_.players_[idx].name, frame_.time);
         else
             continue;
 
@@ -766,26 +767,28 @@ void GameScene::processInput(const Array<WinEvent>& events)
     }
 }
 
+// @TODO: client-side prediction
+// we need to create another Simulation: predictionSim_
+// don't push explo events in predictionSim_.update()
+
 void GameScene::update()
 {
     exploEvents_.clear();
 
     netClient_.update(frame_.time, nameToSetBuf_, exploEvents_, actions_[0]);
 
-    // @TODO: client-side prediction
-    // but then don't push explo events here in sim_.update()
     if(!netClient_.inGame)
-        sim_.update(frame_.time, exploEvents_);
-
-    // @TODO: client-side prediction
-    else if(netClient_.simReadyToSync)
-        sim_ = netClient_.sim;
+        offlineSim_.update(frame_.time, exploEvents_);
 
     emitter_.update(frame_.time);
 
-    for(int i = 0; i < sim_.players_.size(); ++i)
     {
-        playerViews_[i].anims[sim_.players_[i].dir].update(frame_.time);
+        const Simulation& sim = netClient_.inGame ? netClient_.sim : offlineSim_;
+
+        for(int i = 0; i < sim.players_.size(); ++i)
+        {
+            playerViews_[i].anims[sim.players_[i].dir].update(frame_.time);
+        }
     }
 
     for(int i = 0; i < explosions_.size(); ++i)
@@ -811,7 +814,7 @@ void GameScene::update()
         Explosion e;
         e.anim = createExplosionAnim();
         e.tile = event.tile;
-        e.size = sim_.tileSize_ * 2.f;
+        e.size = Simulation::tileSize_ * 2.f;
 
         if(event.type == ExploEvent::Crate)
             playSound(sounds_.crateExplosion, 0.2f);
@@ -824,7 +827,7 @@ void GameScene::update()
 
         else
         {
-            e.size = sim_.tileSize_ * 4.f;
+            e.size = Simulation::tileSize_ * 4.f;
             e.anim.frameDt *= 1.5f;
             e.color = {0.1f, 0.1f, 0.1f, 0.2f};
         }
@@ -833,13 +836,16 @@ void GameScene::update()
     }
 }
 
+// this should be static global function
 void GameScene::render(const GLuint program)
 {
+    const Simulation& sim = netClient_.inGame ? netClient_.sim : offlineSim_; // ... there is
+    // to much implicit state
     bindProgram(program);
 
     Camera camera;
     camera.pos = vec2(0.f);
-    camera.size = vec2(Simulation::MapSize * sim_.tileSize_);
+    camera.size = vec2(Simulation::MapSize * sim.tileSize_);
     camera = expandToMatchAspectRatio(camera, frame_.fbSize);
     uniform2f(program, "cameraPos", camera.pos);
     uniform2f(program, "cameraSize", camera.size);
@@ -853,11 +859,11 @@ void GameScene::render(const GLuint program)
         for (int i = 0; i < Simulation::MapSize; ++i)
         {
             Rect& rect = rects_[j * Simulation::MapSize + i];
-            rect.pos = vec2(i, j) * sim_.tileSize_;
-            rect.size = vec2(sim_.tileSize_);
+            rect.pos = vec2(i, j) * sim.tileSize_;
+            rect.size = vec2(sim.tileSize_);
             rect.color = {1.f, 1.f, 1.f, 1.f};
 
-            switch (sim_.tiles_[j][i])
+            switch (sim.tiles_[j][i])
             {
                 case 0: rect.texRect = {0.f, 0.f, 64.f, 64.f};   break;
                 case 1: rect.texRect = {64.f, 0.f, 64.f, 64.f};  break;
@@ -879,16 +885,16 @@ void GameScene::render(const GLuint program)
 
     // bombs
 
-    assert(sim_.bombs_.size() <= getSize(rects_));
+    assert(sim.bombs_.size() <= getSize(rects_));
 
-    for(int i = 0; i < sim_.bombs_.size(); ++i)
+    for(int i = 0; i < sim.bombs_.size(); ++i)
     {
         // @ somewhat specific to the bomb texture asset
-        const float coeff = fabs(sinf(sim_.bombs_[i].timer * 2.f)) * 0.4f;
+        const float coeff = fabs(sinf(sim.bombs_[i].timer * 2.f)) * 0.4f;
 
         Rect& rect = rects_[i];
-        rect.size = vec2(sim_.tileSize_ + coeff * sim_.tileSize_);
-        rect.pos = vec2(sim_.bombs_[i].tile) * sim_.tileSize_ + (vec2(sim_.tileSize_)
+        rect.size = vec2(sim.tileSize_ + coeff * sim.tileSize_);
+        rect.pos = vec2(sim.bombs_[i].tile) * sim.tileSize_ + (vec2(sim.tileSize_)
                 - rect.size) / 2.f;
 
         // default values might be overwritten
@@ -898,14 +904,14 @@ void GameScene::render(const GLuint program)
 
     uniform1i(program, "mode", FragmentMode::Texture);
     bindTexture(textures_.bomb);
-    updateGLBuffers(glBuffers_, rects_, sim_.bombs_.size());
-    renderGLBuffers(glBuffers_, sim_.bombs_.size());
+    updateGLBuffers(glBuffers_, rects_, sim.bombs_.size());
+    renderGLBuffers(glBuffers_, sim.bombs_.size());
 
     // players
 
-    for(int i = 0; i < sim_.players_.size(); ++i)
+    for(int i = 0; i < sim.players_.size(); ++i)
     {
-        Player& player = sim_.players_[i];
+        const Player& player = sim.players_[i];
 
         if(player.hp == 0)
             continue;
@@ -913,7 +919,7 @@ void GameScene::render(const GLuint program)
         PlayerView& playerView = playerViews_[i];
 
         Rect rect;
-        rect.size = vec2(sim_.tileSize_);
+        rect.size = vec2(sim.tileSize_);
         rect.pos = player.pos;
 
         if(player.dmgTimer > 0.f)
@@ -949,8 +955,8 @@ void GameScene::render(const GLuint program)
     {
         rects_[i].size = vec2(explosions_[i].size);
 
-        rects_[i].pos = vec2(explosions_[i].tile) * sim_.tileSize_
-                        + ( vec2(sim_.tileSize_) - rects_[i].size ) / 2.f;
+        rects_[i].pos = vec2(explosions_[i].tile) * sim.tileSize_
+                        + ( vec2(sim.tileSize_) - rects_[i].size ) / 2.f;
 
         rects_[i].color = explosions_[i].color;
         rects_[i].texRect = explosions_[i].anim.getCurrentFrame();
@@ -978,20 +984,20 @@ void GameScene::render(const GLuint program)
     {
         Rect* rect = &rects_[0];
         const float h = 2.f;
-        for(const Player& player: sim_.players_)
+        for(const Player& player: sim.players_)
         {
             if(player.hp == 0)
                 continue;
 
             // * hp
             rect[0].pos = player.pos;
-            rect[0].size = {float(player.hp) /Simulation::HP * sim_.tileSize_, h};
+            rect[0].size = {float(player.hp) /Simulation::HP * sim.tileSize_, h};
             rect[0].color = {1.f, 0.15f, 0.15f, 0.7f};
 
             // * drop cooldown
             rect[1].pos = rect[0].pos;
             rect[1].pos.y += h;
-            rect[1].size = {player.dropCooldown / sim_.dropCooldown_ * sim_.tileSize_, h};
+            rect[1].size = {player.dropCooldown / sim.dropCooldown_ * sim.tileSize_, h};
             rect[1].color = {1.f, 1.f, 0.f, 0.6f};
 
             rect += 2;
@@ -1014,7 +1020,7 @@ void GameScene::render(const GLuint program)
         text.color = {0.1f, 1.f, 0.1f, 0.85f};
         text.scale = 0.15f;
 
-        for(Player& player: sim_.players_)
+        for(const Player& player: sim.players_)
         {
             if(player.hp == 0)
                 continue;
@@ -1033,15 +1039,15 @@ void GameScene::render(const GLuint program)
 
     // new round timer
 
-    if(sim_.timeToStart_ > 0.f)
+    if(sim.timeToStart_ > 0.f)
     {
         char buffer[20];
         Text text;
         text.str = buffer;
-        snprintf(buffer, getSize(buffer), "%.3f", sim_.timeToStart_);
+        snprintf(buffer, getSize(buffer), "%.3f", sim.timeToStart_);
         text.color = {1.f, 0.5f, 1.f, 0.8f};
         text.scale = 2.f;
-        text.pos = {(Simulation::MapSize * sim_.tileSize_ - getTextSize(text, font_).x)
+        text.pos = {(Simulation::MapSize * sim.tileSize_ - getTextSize(text, font_).x)
                     / 2.f, 5.f};
 
         const int count = writeTextToBuffer(text, font_, rects_, getSize(rects_));
@@ -1054,7 +1060,7 @@ void GameScene::render(const GLuint program)
 
     // score
 
-    if(sim_.timeToStart_ > 0.f || showScore_)
+    if(sim.timeToStart_ > 0.f || showScore_)
     {
         char buffer[256];
         Text text;
@@ -1066,14 +1072,14 @@ void GameScene::render(const GLuint program)
         bufOffset += snprintf(buffer + bufOffset, max(0, getSize(buffer) - bufOffset),
                               "score:");
 
-        for(const Player& player: sim_.players_)
+        for(const Player& player: sim.players_)
         {
             bufOffset += snprintf(buffer + bufOffset, max(0, getSize(buffer) - bufOffset),
                                   "\n%d", player.score);
         }
 
         const vec2 textSize = getTextSize(text, font_);
-        text.pos = ( vec2(Simulation::MapSize) * sim_.tileSize_ - textSize ) / 2.f;
+        text.pos = ( vec2(Simulation::MapSize) * sim.tileSize_ - textSize ) / 2.f;
 
         // * background
         {
@@ -1105,9 +1111,9 @@ void GameScene::render(const GLuint program)
         rect.size = vec2(20.f);
         rect.pos = {text.pos.x + textSize.x - rect.size.x, text.pos.y};
 
-        for(int i = 0; i < sim_.players_.size(); ++i)
+        for(int i = 0; i < sim.players_.size(); ++i)
         {
-            const Player& player = sim_.players_[i];
+            const Player& player = sim.players_[i];
             const PlayerView& playerView = playerViews_[i];
             rect.pos.y += lineSpace;
             rect.texRect = player.dir ? playerView.anims[player.dir].getCurrentFrame() :
@@ -1154,8 +1160,8 @@ void GameScene::render(const GLuint program)
 
         if(prevNumActiveInputs != newNumActiveInputs)
         {
-            sim_.players_.resize(newNumActiveInputs);
-            sim_.setNewGame();
+            offlineSim_.players_.resize(newNumActiveInputs);
+            offlineSim_.setNewGame();
         }
     }
 

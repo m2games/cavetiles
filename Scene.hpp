@@ -536,7 +536,7 @@ private:
     char nameToSetBuf_[20] = "player1";
     char inputNameBuf_[20] = {}; // flush to nameToSetBuf_ on ENTER
     char chatBuf_[128] = {};
-    Simulation sim_;
+    Simulation offlineSim_;
     PlayerView playerViews_[MaxPlayers];
     Action actions_[2];
     FixedArray<ExploEvent, 50> exploEvents_;
