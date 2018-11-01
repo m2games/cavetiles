@@ -10,4 +10,4 @@ mac: server
 
 .PHONY: server
 server:
-	g++ -std=c++11 -Wall -Wextra -pedantic -g server.cpp -o server
+	g++ -std=c++11 -Wall -Wextra -pedantic -fno-rtti -fno-exceptions -g server.cpp -o server
