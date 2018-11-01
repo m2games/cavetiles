@@ -18,6 +18,8 @@ const char* getCmdStr(int cmd)
         case Cmd::PlayerInput:  return "PLAYER_INPUT";
         case Cmd::Simulation:   return "SIMULATION";
         case Cmd::InitTileData: return "INIT_TILE_DATA";
+        case Cmd::AddBot:       return "ADD_BOT";
+        case Cmd::RemoveBot:    return "REMOVE_BOT";
     }
     assert(false);
 }
@@ -230,6 +232,9 @@ end:;
 
 void Simulation::updateAndProcessBotInput(const char* name, float dt)
 {
+    if(timeToStart_ > 0.f) // this is already checked in processPlayerInput()
+        return;
+
     const Player* pptr = nullptr;
 
     for(const Player& p: players_)
@@ -241,7 +246,10 @@ void Simulation::updateAndProcessBotInput(const char* name, float dt)
     assert(pptr);
 
     const Player& botPlayer = *pptr;
-    (void)botPlayer;
+
+    if(botPlayer.hp == 0) // same as as timeToStart_
+        return;
+
     BotData& botData = botData_[pptr - players_.begin()];
     Action action;
 

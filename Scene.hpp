@@ -427,7 +427,6 @@ struct Simulation
     float timeToStart_ = 0.f;
 };
 
-
 namespace netcode
 {
 
@@ -448,6 +447,8 @@ struct Cmd
         PlayerInput,
         Simulation,
         InitTileData,
+        AddBot,
+        RemoveBot,
 
         _count
     };

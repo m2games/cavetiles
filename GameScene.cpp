@@ -1205,6 +1205,16 @@ void GameScene::render(const GLuint program)
     }
 
     ImGui::Spacing();
+
+    if(ImGui::Button("add bot to game"))
+        addMsg(netClient_.sendBuf, netcode::Cmd::AddBot);
+
+    ImGui::SameLine();
+
+    if(ImGui::Button("remove bot from game"))
+        addMsg(netClient_.sendBuf, netcode::Cmd::RemoveBot);
+
+    ImGui::Spacing();
     ImGui::Text("netcode::Client log");
     ImGui::InputTextMultiline("##netcode::NetClient log", netClient_.logBuf.data(),
         netClient_.logBuf.size(), ImVec2(1000.f, 0.f), ImGuiInputTextFlags_ReadOnly);

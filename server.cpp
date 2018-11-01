@@ -49,6 +49,11 @@ struct Client
     bool alive = true;
 };
 
+struct Bot
+{
+    char name[Player::NameBufSize];
+};
+
 const char* getStatusStr(ClientStatus code)
 {
     switch(code)
@@ -66,9 +71,9 @@ bool wouldBlock()
     return errno == EAGAIN || errno == EWOULDBLOCK;
 }
 
-static constexpr int maxClients = 10;
+enum {MaxClients = 10};
 
-void sendInitTileData(FixedArray<Client, maxClients>& clients, Array<char>* sendBufs, int* tileMap)
+void sendInitTileData(FixedArray<Client, MaxClients>& clients, Array<char>* sendBufs, int* tileMap)
 {
     for(int cidx = 0; cidx < clients.size(); ++cidx)
     {
@@ -95,7 +100,8 @@ void sendInitTileData(FixedArray<Client, maxClients>& clients, Array<char>* send
 static volatile int gExitLoop = false;
 void sigHandler(int) {gExitLoop = true;}
 
-void setNewGame(FixedArray<Client, maxClients>& clients, Simulation& sim)
+void setNewGame(FixedArray<Client, MaxClients>& clients, const FixedArray<Bot, MaxPlayers>& bots,
+        Simulation& sim)
 {
     sim.players_.clear();
 
@@ -108,7 +114,31 @@ void setNewGame(FixedArray<Client, maxClients>& clients, Simulation& sim)
         }
     }
 
+    for(const Bot& bot: bots)
+    {
+        sim.players_.pushBack({});
+        memcpy(sim.players_.back().name, bot.name, Player::NameBufSize);
+    }
+
     sim.setNewGame();
+}
+
+bool nameAvailable(const FixedArray<Client, MaxClients>& clients,
+        const FixedArray<Bot, MaxPlayers>& bots, const char* name)
+{
+    for(const Client& client: clients)
+    { 
+        if(client.status == ClientStatus::InGame && strcmp(client.name, name) == 0)
+            return false;
+    }
+
+    for(const Bot& bot: bots)
+    { 
+        if(strcmp(bot.name, name) == 0)
+            return false;
+    }
+
+    return true;
 }
 
 int main()
@@ -185,12 +215,12 @@ int main()
         return 0;
     }
 
-    FixedArray<Client, maxClients> clients;
-    Array<char> sendBufs[maxClients];
-    Array<char> recvBufs[maxClients];
-    int recvBufsNumUsed[maxClients];
+    FixedArray<Client, MaxClients> clients;
+    Array<char> sendBufs[MaxClients];
+    Array<char> recvBufs[MaxClients];
+    int recvBufsNumUsed[MaxClients];
 
-    for(int i = 0; i < maxClients; ++i)
+    for(int i = 0; i < MaxClients; ++i)
     {
         sendBufs[i].reserve(500);
         recvBufs[i].resize(500);
@@ -201,6 +231,7 @@ int main()
 
     Simulation sim;
     FixedArray<ExploEvent, 50> exploEvents;
+    FixedArray<Bot, MaxPlayers> bots;
 
     // server loop
     // note: don't change the order of operations
@@ -451,38 +482,16 @@ int main()
                         if(!isInGame)
                             thisClient.status = ClientStatus::Lobby;
 
-                        // check if the game is not full
                         if(!isInGame)
                         {
-                            int numPlayers = 0;
-                            for(const Client& client: clients)
-                            {
-                                if(client.status == ClientStatus::InGame)
-                                    ++numPlayers;
-                            }
-
-                            if(numPlayers == sim.players_.maxSize())
+                            if(sim.players_.size() == sim.players_.maxSize())
                             {
                                 addMsg(sendBuf, Cmd::GameFull);
                                 break;
                             }
                         }
 
-                        // check if the name is available
-
-                        bool ok = true;
-
-                        for(const Client& client: clients)
-                        { 
-                            if(client.status == ClientStatus::InGame &&
-                               strcmp(client.name, begin) == 0)
-                            {
-                                ok = false;
-                                break;
-                            }
-                        }
-
-                        if(!ok)
+                        if(!nameAvailable(clients, bots, begin))
                         {
                             addMsg(sendBuf, Cmd::MustRename, begin);
                             break;
@@ -521,7 +530,7 @@ int main()
                             }
                         }
 
-                        setNewGame(clients, sim);
+                        setNewGame(clients, bots, sim);
                         sendInitTileData(clients, sendBufs, sim.tiles_[0]);
                         break;
                     }
@@ -546,14 +555,53 @@ int main()
                         }
                         break;
                     }
+
                     case Cmd::PlayerInput:
                     {
                         Action action;
 
+                        // @TODO remove this assert...
                         assert(sscanf(begin, "%d %d %d %d %d", &action.up, &action.down,
                                     &action.left, &action.right, &action.drop) == 5);
 
                         sim.processPlayerInput(action, thisClient.name);
+                        break;
+                    }
+
+                    // @TODO send operation status to clients
+                    case Cmd::AddBot:
+                    {
+                        if(sim.players_.size() == sim.players_.maxSize())
+                            break;
+
+                        Bot bot;
+                        int idx = 0;
+                        while(true)
+                        {
+                            snprintf(bot.name, sizeof(bot.name), "bot_%d", idx++);
+
+                            if(nameAvailable(clients, bots, bot.name))
+                            {
+                                bots.pushBack(bot);
+                                setNewGame(clients, bots, sim);
+                                sendInitTileData(clients, sendBufs, sim.tiles_[0]);
+                                break;
+                            }
+                        }
+
+                        break;
+                    }
+
+                    // @TODO send operation status to clients
+                    case Cmd::RemoveBot:
+                    {
+                        if(bots.size())
+                        {
+                            bots.popBack();
+                            setNewGame(clients, bots, sim);
+                            sendInitTileData(clients, sendBufs, sim.tiles_[0]);
+                        }
+
                         break;
                     }
                 }
@@ -566,6 +614,9 @@ int main()
 
         // run the simulation
         {
+            // we check clients and not sim.players_ because we don't want to update simulation
+            // if only bots are playing
+
             bool doSim = false;
             for(const Client& client: clients)
             {
@@ -579,6 +630,9 @@ int main()
             if(doSim)
             {
                 exploEvents.clear();
+
+                for(const Bot& bot: bots)
+                    sim.updateAndProcessBotInput(bot.name, dt);
 
                 if(sim.update(dt, exploEvents))
                 {
@@ -709,7 +763,7 @@ int main()
 
         if(needSetNewGame)
         {
-            setNewGame(clients, sim);
+            setNewGame(clients, bots, sim);
             sendInitTileData(clients, sendBufs, sim.tiles_[0]);
         }
 
