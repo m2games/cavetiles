@@ -1,4 +1,7 @@
 #include "Scene.hpp"
+#include <netdb.h>
+#include <string.h>
+#include <stdio.h>
 
 // @ this souldn't be there but... (not intuitive)
 namespace netcode
