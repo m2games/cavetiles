@@ -335,13 +335,15 @@ struct Dir
 
 struct Player
 {
+    enum {NameBufSize = 20};
+
     vec2 pos;
     float vel;
     int dir = Dir::Nil;
     float dropCooldown;
     int hp;
     int score = 0;
-    char name[20] = {};
+    char name[NameBufSize] = {};
 
     // only for the visuals; kept in simulation for convenience
     float dmgTimer = 0.f;
@@ -358,6 +360,7 @@ enum {MaxPlayers = 4}; // @
 
 struct Bomb
 {
+    Bomb() {for(int& idx: playerIdxs) idx = -1;}
     void addPlayer(int idx);
     void removePlayer(int idx);
     bool findPlayer(int idx) const;
@@ -367,7 +370,7 @@ struct Bomb
     float timer;
 
     // players allowed to stand on a bomb (used for resolving collisions)
-    int playerIdxs[MaxPlayers] = {-1, -1, -1, -1};
+    int playerIdxs[MaxPlayers];
 };
 
 struct ExploEvent
@@ -466,18 +469,17 @@ struct NetClient
     void update(float dt, const char* name,
                 FixedArray<ExploEvent, 50>& eevents, Action& playerAction);
 
-    Array<char> sendBuf, recvBuf, logBuf;
-    int recvBufNumUsed = 0;
-    const int maxNameSize = 19;
     const float timerAliveMax = 5.f;
     const float timerReconnectMax = 5.f;
-    int sockfd = -1;
     float timerReconnect = timerReconnectMax;
+    float timerSendSetNameMsg = timerReconnectMax;
+    Array<char> sendBuf, recvBuf, logBuf;
+    int recvBufNumUsed = 0;
+    int sockfd = -1;
     bool inGame = false;
     bool sendSetNameMsg = false;
-    float timerSendSetNameMsg = timerReconnectMax;
     Simulation sim;
-    char inGameName[20]; // this will be used to identify the player in Simulation
+    char inGameName[Player::NameBufSize]; // this will be used to identify the player in Simulation
 
     // initialized in connect() (see cpp file)
     bool serverAlive;
@@ -532,8 +534,8 @@ private:
     } sounds_;
 
     netcode::NetClient netClient_;
-    char nameToSetBuf_[20] = "player1";
-    char inputNameBuf_[20] = {}; // flush to nameToSetBuf_ on ENTER
+    char nameToSetBuf_[Player::NameBufSize] = "player1";
+    char inputNameBuf_[Player::NameBufSize] = {}; // flush to nameToSetBuf_ on ENTER
     char chatBuf_[128] = {};
     Simulation offlineSim_;
     PlayerView playerViews_[MaxPlayers];

@@ -193,7 +193,7 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
         timerSendSetNameMsg = 0.f;
 
         int len = strlen(name);
-        assert(len < maxNameSize);
+        assert(len < Player::NameBufSize);
         assert(len);
         addMsg(sendBuf, Cmd::SetName, name);
     }
@@ -329,7 +329,7 @@ void NetClient::update(const float dt, const char* name, FixedArray<ExploEvent, 
                     log(logBuf, "%s %s", getCmdStr(cmd), begin);
                     inGame = true;
                     int len = strlen(begin);
-                    assert(len <= maxNameSize);
+                    assert(len < Player::NameBufSize);
                     memcpy(inGameName, begin, len);
                     inGameName[len] = '\0';
                     break;
@@ -557,7 +557,7 @@ void Anim::update(const float dt)
 
 GameScene::GameScene()
 {
-    // @TODO: configuration file? :D
+    // @TODO: configuration file
     {
         FILE* file;
         file = fopen(".name", "r");
@@ -565,7 +565,7 @@ GameScene::GameScene()
         if(file)
         {
             fgets(nameToSetBuf_, sizeof(nameToSetBuf_), file);
-            assert(!fclose(file));
+            fclose(file);
         }
     }
 
@@ -576,7 +576,7 @@ GameScene::GameScene()
         if(file)
         {
             fgets(netClient_.host, sizeof(netClient_.host), file);
-            assert(!fclose(file));
+            fclose(file);
         }
     }
 
@@ -1183,7 +1183,7 @@ void GameScene::render(const GLuint program)
             file = fopen(".host", "w");
             assert(file);
             fputs(hostnameBuf_, file);
-            assert(!fclose(file));
+            fclose(file);
         }
     }
 
@@ -1199,7 +1199,7 @@ void GameScene::render(const GLuint program)
         file = fopen(".name", "w");
         assert(file);
         fputs(nameToSetBuf_, file);
-        assert(!fclose(file));
+        fclose(file);
 
         netcode::addMsg(netClient_.sendBuf, netcode::Cmd::SetName, nameToSetBuf_);
     }
@@ -1207,7 +1207,7 @@ void GameScene::render(const GLuint program)
     ImGui::Spacing();
     ImGui::Text("netcode::Client log");
     ImGui::InputTextMultiline("##netcode::NetClient log", netClient_.logBuf.data(),
-        netClient_.logBuf.size(), ImVec2(300.f, 0.f), ImGuiInputTextFlags_ReadOnly);
+        netClient_.logBuf.size(), ImVec2(1000.f, 0.f), ImGuiInputTextFlags_ReadOnly);
 
     ImGui::Spacing();
     ImGui::Text("send chat msg");

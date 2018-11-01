@@ -1,5 +1,5 @@
-COMM = g++ -std=c++11 -Wall -Wextra -pedantic -Wno-nested-anon-types -fno-exceptions \
-       -fno-rtti -g -I/usr/local/include -L/usr/local/Cellar -L/usr/local/lib \
+COMM = g++ -std=c++11 -Wall -Wextra -pedantic -Wno-class-memaccess -fno-exceptions -fno-rtti -g \
+       -I/usr/local/include -L/usr/local/Cellar -L/usr/local/lib \
        -o cavetiles main.cpp -lglfw -ldl
 
 linux: server

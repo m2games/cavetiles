@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <time.h>
 #include <netinet/tcp.h>
+
 #include "Array.hpp"
 #include "Scene.hpp"
 #include "Simulation.cpp"
@@ -42,7 +43,7 @@ enum class ClientStatus
 struct Client
 {
     ClientStatus status = ClientStatus::WaitingForInit;
-    char name[20] = "dummy";
+    char name[Player::NameBufSize] = "dummy";
     int sockfd;
     bool remove = false;
     bool alive = true;
@@ -93,6 +94,22 @@ void sendInitTileData(FixedArray<Client, maxClients>& clients, Array<char>* send
 
 static volatile int gExitLoop = false;
 void sigHandler(int) {gExitLoop = true;}
+
+void setNewGame(FixedArray<Client, maxClients>& clients, Simulation& sim)
+{
+    sim.players_.clear();
+
+    for(const Client& client: clients)
+    {
+        if(client.status == ClientStatus::InGame)
+        {
+            sim.players_.pushBack({});
+            memcpy(sim.players_.back().name, client.name, Player::NameBufSize);
+        }
+    }
+
+    sim.setNewGame();
+}
 
 int main()
 {
@@ -207,7 +224,7 @@ int main()
 
                     if(client.alive == false)
                     {
-                        printf("client '%s' (%s) will be removed (no PONG or init msg)\n",
+                        printf("client %s (%s) will be removed (no PONG or init msg)\n",
                                client.name, getStatusStr(client.status));
                         client.remove = true;
                     }
@@ -293,7 +310,8 @@ int main()
                 }
                 else if(rc == 0)
                 {
-                    printf("client has closed the connection\n");
+                    printf("%s (%s) has closed the connection\n", client.name,
+                            getStatusStr(client.status));
                     client.remove = true;
                     break;
                 }
@@ -308,8 +326,8 @@ int main()
 
                     if(recvBuf.size() > 10000)
                     {
-                        printf("recvBuf BIG SIZE ISSUE, clearing the buffer for"
-                               " client: '%s' (%s)\n", client.name, getStatusStr(client.status));
+                        printf("recvBuf BIG SIZE ISSUE, clearing the buffer for %s (%s)\n",
+                                client.name, getStatusStr(client.status));
 
                         recvBufNumUsed = 0;
                     }
@@ -362,11 +380,6 @@ int main()
 
                 ++end;
 
-                /*
-                printf("'%s' (%s) received msg: '%s'\n", thisClient.name,
-                                                         getStatusStr(thisClient.status), begin);
-                                                         */
-
                 int cmd = 0;
                 for(int i = 1; i < Cmd::_count; ++i)
                 {
@@ -387,7 +400,8 @@ int main()
                 switch(cmd)
                 {
                     case 0:
-                        printf("WARNING unknown command received: '%s'\n", begin);
+                        printf("%s (%s) WARNING unknown command received: %s\n", thisClient.name,
+                                getStatusStr(thisClient.status), begin);
                         break;
 
                     case Cmd::Ping:
@@ -400,8 +414,6 @@ int main()
 
                     case Cmd::SetName:
                     {
-                        // @ too much corner cases...
-
                         // validate if there is no whitespace
                         // otherwise our serialization system will fail :D
                         {
@@ -429,7 +441,6 @@ int main()
 
                         const bool isInGame = thisClient.status == ClientStatus::InGame;
 
-                        // ...
                         // case when in-game client sets the same name once again
                         if(isInGame)
                         {
@@ -450,7 +461,7 @@ int main()
                                     ++numPlayers;
                             }
 
-                            if(numPlayers == 2)
+                            if(numPlayers == sim.players_.maxSize())
                             {
                                 addMsg(sendBuf, Cmd::GameFull);
                                 break;
@@ -471,96 +482,47 @@ int main()
                             }
                         }
 
-                        if(ok)
+                        if(!ok)
                         {
-                            bool rename = false;
-                            char oldName[20];
+                            addMsg(sendBuf, Cmd::MustRename, begin);
+                            break;
+                        }
 
-                            if(isInGame)
-                            {
-                                rename = true;
-                                memcpy(oldName, thisClient.name, 20);
-                            }
-                            else
-                            {
-                                thisClient.status = ClientStatus::InGame;
-                                sim.setNewGame();
-                                sendInitTileData(clients, sendBufs, sim.tiles_[0]);
-                            }
+                        bool rename = false;
+                        char oldName[Player::NameBufSize];
 
-                            const int maxSize = sizeof(thisClient.name);
-
-                            // + 1 so the null char will be included
-                            memcpy(thisClient.name, begin, min(maxSize, int(strlen(begin)) + 1));
-                            thisClient.name[maxSize - 1] = '\0';
-                            addMsg(sendBuf, Cmd::NameOk, thisClient.name);
-
-                            // update the player name in the simulation
-
-                            // if there is already a player with the target name
-                            // (e.g. other client with the same name left earlier) - just skip
-                            // so we don't end up with e.g. two players with the same name
-
-                            bool skipSettingPlayerName = false;
-
-                            for(Player& player: sim.players_)
-                            {
-                                if(strcmp(player.name, thisClient.name) == 0)
-                                {
-                                    skipSettingPlayerName = true;
-                                    break;
-                                }
-                            }
-
-                            if(!skipSettingPlayerName)
-                            {
-                                for(Player& player: sim.players_)
-                                {
-                                    bool nameFree = true;
-
-                                    for(const Client& client: clients)
-                                    {
-                                        if(client.status != ClientStatus::InGame)
-                                            continue;
-
-                                        if(strcmp(client.name, player.name) == 0 &&
-                                                &thisClient != &client) // case of reconnection
-                                        {
-                                            nameFree = false;
-                                            break;
-                                        }
-                                    }
-
-                                    if(nameFree)
-                                    {
-                                        memcpy(player.name, thisClient.name,
-                                                sizeof(thisClient.name));
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // send announcement
-                            for(int i = 0; i < clients.size(); ++i)
-                            {
-                                if(clients[i].status == ClientStatus::InGame)
-                                {
-                                    char msg[128];
-
-                                    if(!rename)
-                                        snprintf(msg, sizeof(msg), "'%s' has joined the game!",
-                                                 thisClient.name);
-                                    else
-                                        snprintf(msg, sizeof(msg), "'%s' changed name to '%s'!",
-                                                 oldName, thisClient.name);
-
-                                    addMsg(sendBufs[i], Cmd::Chat, msg);
-                                }
-                            }
+                        if(isInGame)
+                        {
+                            rename = true;
+                            memcpy(oldName, thisClient.name, Player::NameBufSize);
                         }
                         else
-                            addMsg(sendBuf, Cmd::MustRename, begin);
+                            thisClient.status = ClientStatus::InGame;
 
+                        memcpy(thisClient.name, begin, Player::NameBufSize);
+                        thisClient.name[Player::NameBufSize - 1] = '\0';
+                        addMsg(sendBuf, Cmd::NameOk, thisClient.name);
+
+                        // send announcement
+                        for(int i = 0; i < clients.size(); ++i)
+                        {
+                            if(clients[i].status == ClientStatus::InGame)
+                            {
+                                char msg[128];
+
+                                if(!rename)
+                                    snprintf(msg, sizeof(msg), "%s has joined the game!",
+                                             thisClient.name);
+                                else
+                                    snprintf(msg, sizeof(msg), "%s changed name to %s!",
+                                             oldName, thisClient.name);
+
+                                addMsg(sendBufs[i], Cmd::Chat, msg);
+                            }
+                        }
+
+                        setNewGame(clients, sim);
+                        sendInitTileData(clients, sendBufs, sim.tiles_[0]);
                         break;
                     }
 
@@ -568,7 +530,8 @@ int main()
                     {
                         if(thisClient.status != ClientStatus::InGame)
                         {
-                            printf("only InGame clients can send chat messages\n");
+                            printf("WARNING %s (%s) tried to send chat msg but is not in game\n",
+                                    thisClient.name, getStatusStr(thisClient.status));
                             break;
                         }
 
@@ -653,8 +616,6 @@ int main()
 
                 for(const Bomb& b: sim.bombs_)
                 {
-                    assert(getSize(b.playerIdxs) == 2);
-
                     offset += sprintf(buf + offset, "%d %d %d %f %d %d ",
                             b.tile.x, b.tile.y, b.range, b.timer, b.playerIdxs[0],
                             b.playerIdxs[1]);
@@ -709,6 +670,8 @@ int main()
             }
         }
 
+        bool needSetNewGame = false;
+
         // remove some clients
         for(int cidx = 0; cidx < clients.size(); ++cidx)
         {
@@ -719,20 +682,19 @@ int main()
                 if(client.status == ClientStatus::InGame)
                 {
                     char buf[64];
-                    snprintf(buf, sizeof(buf), "'%s' has left", client.name);
+                    snprintf(buf, sizeof(buf), "%s has left", client.name);
 
                     for(int i = 0; i < clients.size(); ++i)
                     {
                         if(!clients[i].remove && clients[i].status == ClientStatus::InGame)
                             addMsg(sendBufs[i], Cmd::Chat, buf);
                     }
+
+                    needSetNewGame = true;
                 }
 
-                printf("removing client '%s' (%s)\n", client.name,
-                       getStatusStr(client.status));
-
+                printf("removing client %s (%s)\n", client.name, getStatusStr(client.status));
                 close(client.sockfd);
-
                 client = clients.back();
 
                 const int lastIdx = clients.size() - 1;
@@ -743,6 +705,12 @@ int main()
                 clients.popBack();
                 --cidx;
             }
+        }
+
+        if(needSetNewGame)
+        {
+            setNewGame(clients, sim);
+            sendInitTileData(clients, sendBufs, sim.tiles_[0]);
         }
 
         // @TODO:
