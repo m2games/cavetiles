@@ -766,7 +766,8 @@ void GameScene::update()
 
         for(int i = 0; i < sim.players_.size(); ++i)
         {
-            playerViews_[i].anims[sim.players_[i].dir].update(frame_.time);
+            if(sim.players_[i].hp)
+                playerViews_[i].anims[sim.players_[i].dir].update(frame_.time);
         }
     }
 

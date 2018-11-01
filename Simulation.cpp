@@ -240,10 +240,13 @@ void Simulation::updateAndProcessBotInput(const char* name, float dt)
 
     const Player* pptr = nullptr;
 
-    for(const Player& p: players_)
+    for(Player& p: players_)
     {
-        if(!strncmp(name, p.name, 20))
-                pptr = &p;
+        if(strcmp(name, p.name) == 0)
+        {
+            pptr = &p;
+            break;
+        }
     }
 
     assert(pptr);
@@ -292,8 +295,11 @@ void Simulation::processPlayerInput(const Action& action, const char* name)
 
     for(Player& p: players_)
     {
-        if(!strncmp(name, p.name, 20))
-                pptr = &p;
+        if(strcmp(name, p.name) == 0)
+        {
+            pptr = &p;
+            break;
+        }
     }
 
     assert(pptr);
