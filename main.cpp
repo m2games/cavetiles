@@ -841,7 +841,10 @@ int main()
     {
         GLFWmonitor* const monitor = glfwGetPrimaryMonitor();
         const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-        window = glfwCreateWindow(mode->width, mode->height, "cavetiles", monitor, nullptr);
+        // For development purposes changed to some "magic numbers" mode -> width was here
+        window = glfwCreateWindow(600, 600, "cavetiles", monitor, nullptr);
+        // Get rid of this later
+        glfwSetWindowMonitor(window, nullptr, 700, 200, 600, 600, GLFW_DONT_CARE);
     }
 
     if(!window)

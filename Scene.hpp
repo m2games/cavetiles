@@ -5,6 +5,8 @@
 #include <float.h>
 #include <math.h>
 #include <sys/socket.h>
+#include <stack>
+#include <vector>
 
 template<typename T>
 inline T max(T a, T b) {return a > b ? a : b;}
@@ -402,6 +404,8 @@ struct BotData
     float timerDrop = 0.f;
     float timerDir = 0.f;
     int dir = Dir::Nil;
+    std::stack<int, std::vector<int>> shortestPath;
+    int gameState[13][13];
 };
 
 struct Simulation

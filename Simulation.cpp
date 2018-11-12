@@ -2,6 +2,10 @@
 #include <netdb.h>
 #include <string.h>
 #include <stdio.h>
+#include <stack>
+#include <vector>
+#include <queue>
+#define INF 0x3f3f3f3f
 
 // @ this souldn't be there but... (not intuitive)
 namespace netcode
@@ -233,6 +237,25 @@ end:;
     }
 }
 
+// Change these values if you change MapSize... ugly
+ivec2 minDistance(int dist[][13], bool sptSet[][13], int MapSize) 
+{ 
+   // Initialize min value 
+    int min = INT_MAX;
+    ivec2 min_index; 
+    for (int i = 0; i < MapSize; ++i)
+    {
+        for (int v = 0; v < MapSize; v++) 
+        {
+            if (sptSet[i][v] == false && dist[i][v] <= min) 
+                min = dist[i][v], 
+                min_index = {v, i}; 
+        }
+    }
+   
+    return min_index; 
+}
+
 void Simulation::updateAndProcessBotInput(const char* name, float dt)
 {
     if(timeToStart_ > 0.f) // this is already checked in processPlayerInput()
@@ -262,13 +285,164 @@ void Simulation::updateAndProcessBotInput(const char* name, float dt)
     botData.timerDrop += dt;
     botData.timerDir += dt;
 
-    if(botData.timerDir > 0.5f)
+
+    // Make the bot scan the game every 0.6 s
+    if(botData.timerDir > 0.6f && botData.shortestPath.empty())
     {
         botData.timerDir = 0.f;
-        botData.dir = getRandomInt(0, 4);
-    }
 
-    if(botData.timerDrop > 10.f)
+        // Getting state of the game, with danger zones...
+        int gameState[MapSize][MapSize];
+        memcpy(gameState, tiles_, sizeof(tiles_));
+        int dummyRange;
+
+        for(int bombIdx = 0; bombIdx < bombs_.size(); ++bombIdx)
+        {
+            Bomb bomb = bombs_[bombIdx];
+            dummyRange = bomb.range + 2;
+            gameState[bomb.tile.y][bomb.tile.x] = 3;
+
+            for(int dirIdx = Dir::Nil; dirIdx < Dir::Count; ++dirIdx)
+            {
+                const vec2 dir = dirVecs_[dirIdx];
+                const int range = (dirIdx != Dir::Nil) ? bomb.range : 1;
+
+                for(int step = 1; step <= range; ++step)
+                {
+                    const ivec2 tile = bomb.tile + ivec2(dir) * step;
+                    int tileValue = tiles_[tile.y][tile.x];
+
+                    if (tileValue == 0) 
+                    {
+                        // Set tile to danger zone!
+                        gameState[tile.y][tile.x] = 3;
+                    }
+                }
+            }
+        }
+        // Copy the state of the game to the memory of bot
+        memcpy(botData.gameState, gameState, sizeof(tiles_));
+        
+        // ******** STOP DANGER ZONE *********
+
+        // START CHECKING IF IT SAFE
+        const ivec2 underPlayerTile = getPlayerTile(botPlayer, tileSize_);
+        if (gameState[underPlayerTile.y][underPlayerTile.x] == 3) 
+        {   
+            // Run for your life
+
+            std::priority_queue<std::pair<int, int>, std::vector<std::pair<int, int>>, std::greater<std::pair<int, int>>> Q;
+            std::vector<int> dist;
+            std::vector<int> prev;
+            int n = MapSize * MapSize;
+            prev.assign(n, -1);
+            dist.assign(n, INT_MAX);
+
+            int source = underPlayerTile.y * MapSize + underPlayerTile.x;
+            dist[source] = 0;
+            Q.push({0, source});
+
+            // Perform Dijkstra which returns shortes path tiles.
+            while (!Q.empty())
+            {
+                int curr = Q.top().second;
+                Q.pop();
+
+                int currX = curr % MapSize;
+                int currY = (curr - currX) / MapSize;
+                int currVal = gameState[currY][currX];
+                
+                if (currVal == 0 || dist[curr] == 5) 
+                {
+                    // add to the path and break - we have found our safe place
+                    // or the path got too long.
+                    botData.shortestPath.push(curr); 
+                    break;
+                }
+
+                // for each neighbour i.e tile in cross direction update dist...
+                for(int dirIdx = Dir::Nil; dirIdx < Dir::Count; ++dirIdx) 
+                {
+                        const vec2 dir = dirVecs_[dirIdx];
+                        int next;
+                        if (dirIdx == Dir::Up || dirIdx == Dir::Down) next = curr + MapSize * dir.y;
+                        else next = curr + dir.x;
+
+                        int nextX = next % MapSize;
+                        int nextY = (next - nextX) / MapSize;
+                        const int nextTileVal = gameState[nextY][nextX];
+                        
+                        if (nextTileVal == 0 || nextTileVal == 3) 
+                        {
+                            int alt = dist[curr] + 1;
+                            if (alt < dist[next]) 
+                            {
+                                dist[next] = alt;
+                                prev[next] = curr;
+                                Q.push({dist[next], next});
+                            }
+                        }
+                }    
+            }
+
+              // Get the shortest path
+            if (!botData.shortestPath.empty()) 
+            {
+                int targetTile = botData.shortestPath.top();
+                int parentTile = prev[targetTile];
+                targetTile = parentTile;
+                
+                while (targetTile != -1)
+                {
+                    botData.shortestPath.push(targetTile);
+                    targetTile = prev[targetTile];
+                }
+            }
+        }
+    }
+    
+    // Execute path...
+    if (botData.timerDir > 0.2f && !botData.shortestPath.empty())
+    {
+        botData.timerDir = 0.f;
+        int nextTile = botData.shortestPath.top();
+        botData.shortestPath.pop();
+        int nextTileX = nextTile % MapSize;
+        ivec2 nextMove = {nextTileX, ((nextTile - nextTileX) / MapSize)};
+        ivec2 botPosition = getPlayerTile(botPlayer, tileSize_);
+        ivec2 willGo = botPosition - nextMove;
+
+        // Go to the corresponding direciton...
+        if      (willGo.x == -1 && willGo.y == 0) botData.dir = Dir::Right;
+        else if (willGo.x == 1 && willGo.y == 0) botData.dir = Dir::Left;
+        else if (willGo.x == 0 && willGo.y == -1) botData.dir = Dir::Down;
+        else if (willGo.x == 0 && willGo.y == 1) botData.dir = Dir::Up;
+        else
+        {
+            // If something went wrong, try going to random neighbour...
+            for (int dirIdx = Dir::Nil; dirIdx < Dir::Count; ++dirIdx)
+            {
+                const vec2 dir = dirVecs_[dirIdx];
+                const ivec2 tile = botPosition + ivec2(dir);
+                int tileValue = botData.gameState[tile.y][tile.x];
+                if (tileValue == 0 || tileValue == 3) 
+                {
+                    botData.dir = dirIdx;
+                    break;
+                }
+            }
+        }
+    } 
+    // Attack! Change the first condition...
+    // else if (botData.timerDir > 0.2f && botData.shortestPath.empty())
+    // {   
+    //     botData.timerDir = 0.f;
+    //     botData.dir = getRandomInt(0, 4);
+    // }
+    
+    
+    // Drop the bomb every 5 s
+    if(botData.timerDrop > 5.f)
     {
         botData.timerDrop = 0.f;
         action.drop = true;
