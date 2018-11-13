@@ -5,7 +5,6 @@
 #include <stack>
 #include <vector>
 #include <queue>
-#define INF 0x3f3f3f3f
 
 // @ this souldn't be there but... (not intuitive)
 namespace netcode
@@ -399,16 +398,136 @@ void Simulation::updateAndProcessBotInput(const char* name, float dt)
                 }
             }
         }
+        else
+        {
+            // Agressive mode
+            std::priority_queue<std::pair<int, int>, std::vector<std::pair<int, int>>, std::greater<std::pair<int, int>>> Q;
+            std::vector<int> dist;
+            std::vector<int> prev;
+            int n = MapSize * MapSize;
+            prev.assign(n, -1);
+            dist.assign(n, INT_MAX);
+
+            int source = underPlayerTile.y * MapSize + underPlayerTile.x;
+            dist[source] = 0;
+            double minDistance = INT_MAX;
+            ivec2 closestPlayerPos;
+            Q.push({0, source});
+
+            // Finding the closest player to be the target...
+            for (Player pl : players_)
+            {
+                ivec2 temp = getPlayerTile(pl, tileSize_);
+                double heuristicDistance = heuristic(underPlayerTile, temp);
+                if (heuristicDistance < minDistance && heuristicDistance != 0)
+                {
+                    minDistance = heuristicDistance;
+                    closestPlayerPos = temp;
+                }
+            }
+            botData.target = closestPlayerPos;
+
+            // Perform A* search algorithm to get to the closest player
+            // Btw it's just dijikstra with some heuristic.
+            while (!Q.empty())
+            {
+                int curr = Q.top().second;
+                Q.pop();
+
+                int currX = curr % MapSize;
+                int currY = (curr - currX) / MapSize;
+                ivec2 currTile = {currX, currY};
+                int currVal = gameState[currY][currX];
+                
+                //  && dist[curr] > 3
+                if (currTile == botData.target || (currVal == 1 && dist[curr] > 3)) 
+                {
+                    // add to the path and break - we have our target
+                    // or there is crate on the way...
+                    botData.shortestPath.push(curr); 
+                    break;
+                }
+
+                // for each neighbour i.e tile in cross direction update dist...
+                for(int dirIdx = Dir::Nil; dirIdx < Dir::Count; ++dirIdx) 
+                {
+                        const vec2 dir = dirVecs_[dirIdx];
+                        int next;
+                        if (dirIdx == Dir::Up || dirIdx == Dir::Down) next = curr + MapSize * dir.y;
+                        else next = curr + dir.x;
+
+                        int nextX = next % MapSize;
+                        int nextY = (next - nextX) / MapSize;
+                        const int nextTileVal = gameState[nextY][nextX];
+                        
+                        // If next tile is "free" perform standard pathfinding with heurisitc
+                        // 
+                        if (nextTileVal == 0 || nextTileVal == 1) 
+                        {
+                            int alt = dist[curr] + 1 + heuristic({currX, currY}, botData.target);
+                            if (alt < dist[next]) 
+                            {
+                                dist[next] = alt;
+                                prev[next] = curr;
+                                Q.push({dist[next], next});
+                            }
+                        } 
+                        // If next tile is "dangerous" assign higher weight to it...
+                        // To possibly avoid it
+                        else if (nextTileVal == 3)
+                        {
+                            int alt = dist[curr] + 7 + heuristic({currX, currY}, botData.target);
+                            if (alt < dist[next]) 
+                            {
+                                dist[next] = alt;
+                                prev[next] = curr;
+                                Q.push({dist[next], next});
+                            }
+                        }
+                }    
+            }
+
+            if (!botData.shortestPath.empty()) 
+            {
+                int targetTile = botData.shortestPath.top();
+                if (targetTile != -1) 
+                {
+                    int parentTile = prev[targetTile];
+                    targetTile = parentTile;
+                }
+                
+                while (targetTile != -1)
+                {
+                    botData.shortestPath.push(targetTile);
+                    targetTile = prev[targetTile];
+                }
+            }
+        }
     }
     
-    // Execute path...
+    // Execute assigned path
     if (botData.timerDir > 0.2f && !botData.shortestPath.empty())
     {
         botData.timerDir = 0.f;
         int nextTile = botData.shortestPath.top();
+
         botData.shortestPath.pop();
         int nextTileX = nextTile % MapSize;
-        ivec2 nextMove = {nextTileX, ((nextTile - nextTileX) / MapSize)};
+        int nextTileY = (nextTile - nextTileX) / MapSize;
+        ivec2 nextMove = {nextTileX, nextTileY};
+
+        // If we have accesed player or crate, drop the bomb
+        // TODO: check if nextTileX and Y don't get negative
+        if ((nextMove == botData.target ||
+             botData.gameState[nextTileY][nextTileX] == 1) && botData.timerDrop > 3.f)
+        {
+            action.drop = true;
+            botData.timerDrop = 0.f;
+            // Used legendary goto for the first time in my life!
+            // Exciting and bad!
+            goto moveAction;
+        }
+
         ivec2 botPosition = getPlayerTile(botPlayer, tileSize_);
         ivec2 willGo = botPosition - nextMove;
 
@@ -420,6 +539,7 @@ void Simulation::updateAndProcessBotInput(const char* name, float dt)
         else
         {
             // If something went wrong, try going to random neighbour...
+            // Should never enter here...
             for (int dirIdx = Dir::Nil; dirIdx < Dir::Count; ++dirIdx)
             {
                 const vec2 dir = dirVecs_[dirIdx];
@@ -433,21 +553,8 @@ void Simulation::updateAndProcessBotInput(const char* name, float dt)
             }
         }
     } 
-    // Attack! Change the first condition...
-    // else if (botData.timerDir > 0.2f && botData.shortestPath.empty())
-    // {   
-    //     botData.timerDir = 0.f;
-    //     botData.dir = getRandomInt(0, 4);
-    // }
-    
-    
-    // Drop the bomb every 5 s
-    if(botData.timerDrop > 5.f)
-    {
-        botData.timerDrop = 0.f;
-        action.drop = true;
-    }
 
+moveAction:
     switch(botData.dir)
     {
         case Dir::Up: action.up = true; break;
@@ -458,6 +565,10 @@ void Simulation::updateAndProcessBotInput(const char* name, float dt)
     }
 
     processPlayerInput(action, name);
+}
+
+inline double heuristic(ivec2 a, ivec2 b) {
+  return std::abs(a.x - b.x) + std::abs(a.y - b.y);
 }
 
 void Simulation::processPlayerInput(const Action& action, const char* name)

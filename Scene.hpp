@@ -79,6 +79,8 @@ inline vec2 normalize(const vec2 v) {return v / length(v);}
 
 inline float dot(const vec2 v1, const vec2 v2) {return v1.x * v2.x + v1.y * v2.y;}
 
+inline double heuristic(ivec2 a, ivec2 b);
+
 struct FragmentMode
 {
     enum
@@ -406,6 +408,7 @@ struct BotData
     int dir = Dir::Nil;
     std::stack<int, std::vector<int>> shortestPath;
     int gameState[13][13];
+    ivec2 target;
 };
 
 struct Simulation
