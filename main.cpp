@@ -839,12 +839,14 @@ int main()
 
     GLFWwindow* window;
     {
+// fullscreen window is not working correctly on mac os; debug why
+#ifdef __APPLE__
+        window = glfwCreateWindow(600, 600, "cavetiles", nullptr, nullptr);
+#else
         GLFWmonitor* const monitor = glfwGetPrimaryMonitor();
         const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-        // For development purposes changed to some "magic numbers" mode -> width was here
-        window = glfwCreateWindow(600, 600, "cavetiles", monitor, nullptr);
-        // Get rid of this later
-        glfwSetWindowMonitor(window, nullptr, 700, 200, 600, 600, GLFW_DONT_CARE);
+        window = glfwCreateWindow(mode->width, mode->height, "cavetiles", monitor, nullptr);
+#endif
     }
 
     if(!window)
