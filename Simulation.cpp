@@ -5,6 +5,7 @@
 #include <stack>
 #include <vector>
 #include <queue>
+#include <limits.h>
 
 // @ this souldn't be there but... (not intuitive)
 namespace netcode
